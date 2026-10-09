@@ -1,0 +1,1197 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Prop Radar">
+<meta name="theme-color" content="#08070b">
+<title>Prop Radar</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;700&family=IBM+Plex+Mono:wght@400;600&display=swap">
+<style>
+/* Layout: scope view fills the top, control deck docks below and can be hidden for prop use. Single dark HUD look on purpose. */
+:root {
+  --bg: #08070b;
+  --deck: #110e16;
+  --key: #1d1825;
+  --key-edge: #2f2839;
+  --ink: #f4ecf7;
+  --dim: rgba(244, 236, 247, 0.55);
+  --faint: rgba(244, 236, 247, 0.18);
+  --hot: #ff4fd8;      /* target / signal */
+  --lock: #ffb547;     /* locked */
+  --cool: #7ee8ff;     /* sweep / bearing */
+  --warn: #ff6b6b;
+  --display: "Chakra Petch", "Avenir Next Condensed", "Arial Narrow", system-ui, sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, Menlo, monospace;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+html, body { height: 100%; margin: 0; background: var(--bg); color: var(--ink); overscroll-behavior: none; }
+body {
+  font-family: var(--display);
+  padding: env(safe-area-inset-top, 0px) env(safe-area-inset-right, 0px) env(safe-area-inset-bottom, 0px) env(safe-area-inset-left, 0px);
+  -webkit-user-select: none; user-select: none; touch-action: manipulation;
+}
+[hidden] { display: none !important; }
+button { font: inherit; color: inherit; }
+button:focus-visible, input:focus-visible { outline: 2px solid var(--cool); outline-offset: 2px; }
+
+#app { height: 100%; display: flex; flex-direction: column; }
+
+/* ---------- scope ---------- */
+#scope { position: relative; flex: 1; min-height: 0; overflow: hidden; background: #000; }
+#cam { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+#cam.mirror { transform: scaleX(-1); }
+#hud { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+
+.hud-top { position: absolute; top: 10px; left: 14px; right: 14px; display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; pointer-events: none; }
+#labelWord {
+  pointer-events: auto; background: none; border: 0; padding: 0; cursor: pointer;
+  font-family: var(--display); font-weight: 700; font-size: clamp(26px, 8vw, 40px); letter-spacing: 0.14em; line-height: 1;
+  color: var(--hot); text-shadow: 0 0 14px rgba(255, 79, 216, 0.55), 0 1px 2px #000;
+}
+#status { margin-top: 6px; font-family: var(--mono); font-size: 13px; letter-spacing: 0.12em; color: var(--ink); text-shadow: 0 1px 3px #000; }
+#status.alert { color: var(--warn); }
+#status.locked { color: var(--lock); }
+#status.bearing { color: var(--cool); }
+.badges { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; font-family: var(--mono); font-size: 11px; letter-spacing: 0.1em; }
+.badge { padding: 3px 7px; border: 1px solid var(--faint); border-radius: 3px; background: rgba(8, 7, 11, 0.55); color: var(--dim); }
+.badge.on { color: var(--warn); border-color: var(--warn); }
+
+#debug {
+  position: absolute; top: 92px; left: 14px; margin: 0; padding: 8px 10px; max-width: calc(100% - 28px);
+  background: rgba(8, 7, 11, 0.72); border: 1px solid var(--faint); border-radius: 4px;
+  font-family: var(--mono); font-size: 11px; line-height: 1.5; color: var(--ink); white-space: pre; overflow: hidden;
+  font-variant-numeric: tabular-nums; pointer-events: none;
+}
+
+.meter { position: absolute; left: 14px; right: 14px; bottom: 12px; display: flex; align-items: center; gap: 10px; pointer-events: none; }
+#bar { flex: 1; display: grid; grid-template-columns: repeat(24, 1fr); gap: 3px; height: 16px; }
+#bar i { display: block; border-radius: 1px; background: rgba(244, 236, 247, 0.12); }
+#bar i.on { background: var(--hot); box-shadow: 0 0 6px rgba(255, 79, 216, 0.6); }
+#bar i.on.hi { background: #fff; }
+#bar.locked i.on { background: var(--lock); box-shadow: 0 0 6px rgba(255, 181, 71, 0.6); }
+#bar.fab i.on { animation: rainbow 0.6s linear infinite; }
+#sigNum { width: 3.2ch; text-align: right; font-family: var(--mono); font-weight: 600; font-size: 20px; font-variant-numeric: tabular-nums; text-shadow: 0 1px 3px #000; }
+.sig-cap { font-family: var(--mono); font-size: 10px; letter-spacing: 0.14em; color: var(--dim); }
+
+#result {
+  position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); width: min(92%, 520px);
+  padding: 18px 16px 16px; text-align: center; border: 2px solid var(--hot); border-radius: 6px;
+  background: rgba(8, 7, 11, 0.86); box-shadow: 0 0 30px rgba(255, 79, 216, 0.35); pointer-events: auto; cursor: pointer;
+}
+#result .cap { font-family: var(--mono); font-size: 12px; letter-spacing: 0.2em; color: var(--dim); }
+#result .big { margin-top: 6px; font-weight: 700; font-size: clamp(34px, 11vw, 64px); letter-spacing: 0.06em; line-height: 1.02; text-wrap: balance; }
+#result .num { margin-top: 6px; font-family: var(--mono); font-size: 18px; }
+#result.low { border-color: var(--cool); box-shadow: 0 0 30px rgba(126, 232, 255, 0.3); }
+#result.low .big { color: var(--cool); }
+#result.high .big { color: var(--hot); }
+#result.fab { border-color: #fff; }
+#result.fab .big {
+  font-size: clamp(28px, 8.5vw, 52px);
+  background: linear-gradient(90deg, #ff4f4f, #ffb547, #f8f04a, #59f08a, #4fc3ff, #b06bff, #ff4fd8, #ff4f4f);
+  background-size: 200% 100%; -webkit-background-clip: text; background-clip: text; color: transparent;
+  animation: slide 1.4s linear infinite;
+}
+@keyframes slide { to { background-position: 200% 0; } }
+@keyframes rainbow { 0% { background: #ff4f4f } 20% { background: #ffb547 } 40% { background: #59f08a } 60% { background: #4fc3ff } 80% { background: #b06bff } 100% { background: #ff4f4f } }
+
+#deckToggle {
+  position: absolute; right: 12px; bottom: 40px; padding: 8px 10px; border-radius: 4px;
+  border: 1px solid var(--faint); background: rgba(8, 7, 11, 0.6); color: var(--dim);
+  font-family: var(--mono); font-size: 11px; letter-spacing: 0.12em; cursor: pointer;
+}
+
+/* ---------- deck ---------- */
+#deck { flex: none; background: var(--deck); border-top: 1px solid var(--key-edge); padding: 10px 12px 12px; display: grid; gap: 8px; max-height: 48%; overflow-y: auto; }
+.keys { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+.key {
+  min-height: 54px; padding: 6px 4px; border-radius: 6px; cursor: pointer;
+  border: 1px solid var(--key-edge); background: var(--key); color: var(--ink);
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px;
+  font-weight: 700; font-size: 15px; letter-spacing: 0.08em; line-height: 1.05; text-align: center;
+}
+.key small { font-family: var(--mono); font-weight: 400; font-size: 10px; letter-spacing: 0.08em; color: var(--dim); }
+.key:active { transform: translateY(1px); filter: brightness(1.25); }
+.key.on { border-color: var(--hot); color: var(--hot); background: rgba(255, 79, 216, 0.1); }
+.key.lockon { border-color: var(--lock); color: var(--lock); background: rgba(255, 181, 71, 0.1); }
+.key.bearing { border-color: var(--cool); color: var(--cool); background: rgba(126, 232, 255, 0.08); }
+.key.warn { border-color: var(--warn); color: var(--warn); }
+.key:disabled { opacity: 0.4; }
+.sens { display: flex; align-items: center; gap: 12px; font-family: var(--mono); font-size: 11px; letter-spacing: 0.08em; color: var(--dim); }
+.sens label { flex: none; width: 13.5em; }
+.sens input { flex: 1; min-width: 0; accent-color: var(--hot); height: 28px; }
+
+/* ---------- overlays ---------- */
+.overlay { position: fixed; inset: 0; z-index: 10; display: grid; place-items: center; padding: 24px 20px; background: rgba(8, 7, 11, 0.94); }
+.start-card { width: min(100%, 440px); display: grid; gap: 18px; }
+.start-card h1 { margin: 0; font-size: clamp(40px, 13vw, 64px); letter-spacing: 0.12em; line-height: 0.95; color: var(--hot); text-shadow: 0 0 22px rgba(255, 79, 216, 0.5); }
+.start-card .sub { margin: 0; font-family: var(--mono); font-size: 12px; letter-spacing: 0.16em; color: var(--dim); }
+.start-card ol { margin: 0; padding-left: 1.3em; display: grid; gap: 8px; font-family: var(--mono); font-size: 13px; line-height: 1.45; color: var(--ink); }
+#startBtn {
+  min-height: 72px; border-radius: 8px; border: 2px solid var(--hot); background: rgba(255, 79, 216, 0.14);
+  color: var(--ink); font-weight: 700; font-size: 26px; letter-spacing: 0.3em; cursor: pointer;
+}
+#startBtn:disabled { opacity: 0.5; }
+#startMsg { min-height: 1.4em; margin: 0; font-family: var(--mono); font-size: 12px; line-height: 1.5; color: var(--dim); }
+#startMsg.err { color: var(--warn); }
+
+.editor-card { width: min(100%, 380px); display: grid; gap: 12px; }
+.editor-card label { font-family: var(--mono); font-size: 12px; letter-spacing: 0.14em; color: var(--dim); }
+#labelInput {
+  width: 100%; padding: 12px; border-radius: 6px; border: 1px solid var(--key-edge); background: var(--key); color: var(--hot);
+  font-family: var(--display); font-weight: 700; font-size: 26px; letter-spacing: 0.12em; text-transform: uppercase; -webkit-user-select: text; user-select: text;
+}
+.editor-row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+
+@media (prefers-reduced-motion: reduce) {
+  #result.fab .big, #bar.fab i.on { animation: none; }
+}
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="scope">
+    <video id="cam" playsinline muted autoplay></video>
+    <canvas id="hud"></canvas>
+
+    <div class="hud-top">
+      <div>
+        <button id="labelWord" type="button" aria-label="Edit label">GAYDAR</button>
+        <div id="status">STANDBY</div>
+      </div>
+      <div class="badges">
+        <span class="badge" id="camBadge">FRONT</span>
+        <span class="badge on" id="muteBadge" hidden>MUTED</span>
+      </div>
+    </div>
+
+    <pre id="debug" hidden></pre>
+
+    <div id="result" hidden>
+      <div class="cap" id="resultCap">READING</div>
+      <div class="big" id="resultBig">HIGH</div>
+      <div class="num" id="resultNum">87%</div>
+    </div>
+
+    <button id="deckToggle" type="button">HIDE PANEL</button>
+
+    <div class="meter">
+      <span class="sig-cap">SIG</span>
+      <div id="bar"></div>
+      <span id="sigNum">0</span>
+    </div>
+  </div>
+
+  <div id="deck">
+    <div class="keys">
+      <button class="key" id="kFlip" type="button">FLIP<small>FRONT</small></button>
+      <button class="key" id="kLock" type="button">LOCK<small>NO TARGET</small></button>
+      <button class="key" id="kScan" type="button">SCAN<small>RUN</small></button>
+      <button class="key" id="kResult" type="button">RESULT ▸<small>AUTO</small></button>
+
+      <button class="key" id="kSound" type="button">SOUND<small>GEIGER</small></button>
+      <button class="key" id="kMute" type="button">MUTE<small>OFF</small></button>
+      <button class="key" id="kLabel" type="button">LABEL<small>CYCLE</small></button>
+      <button class="key" id="kDebug" type="button">DEBUG<small>OFF</small></button>
+
+      <button class="key" id="kMark" type="button">MARK<small>SET BEARING</small></button>
+      <button class="key" id="kZero" type="button">RE-ZERO<small>FIX DRIFT</small></button>
+      <button class="key" id="kSweep" type="button">SWEEP<small>COMBO</small></button>
+      <button class="key" id="kModel" type="button">MODEL<small>FACE</small></button>
+    </div>
+    <div class="sens">
+      <label for="sensSlider" id="sensLabel">MAX SIGNAL AT 45% FRAME</label>
+      <input type="range" id="sensSlider" min="5" max="80" step="1" value="45">
+    </div>
+  </div>
+</div>
+
+<div class="overlay" id="startScreen">
+  <div class="start-card">
+    <div>
+      <h1 id="startTitle">GAYDAR</h1>
+      <p class="sub">PROP RADAR · TARGETING SCOPE</p>
+    </div>
+    <ol>
+      <li>Tap START and allow camera and motion access.</li>
+      <li>The front camera is on. Hold the phone at arm's length and bring it closer.</li>
+      <li>Tap FLIP for the rear camera when the phone is mounted on the prop.</li>
+      <li>No sound? Check the silent switch and volume.</li>
+    </ol>
+    <button id="startBtn" type="button">START</button>
+    <p id="startMsg">Loading face detector…</p>
+  </div>
+</div>
+
+<div class="overlay" id="labelEditor" hidden>
+  <form class="editor-card" id="labelForm">
+    <label for="labelInput">CUSTOM LABEL</label>
+    <input id="labelInput" maxlength="16" autocomplete="off" autocapitalize="characters" spellcheck="false">
+    <div class="editor-row">
+      <button class="key" type="button" id="labelCancel">CANCEL</button>
+      <button class="key on" type="submit">SAVE</button>
+    </div>
+  </form>
+</div>
+
+<script type="module">
+/* =====================================================================
+   CONFIG — the one-line switches live here
+   ===================================================================== */
+const CONFIG = {
+  defaultCamera: 'user',      // 'user' = front (testing), 'environment' = rear (prop use)
+  defaultModel: 'face',       // 'face' = short range (~2–3 m), 'body' = pose model, longer range
+  detectFps: 18,              // detection rate cap; limits heat and battery
+  lockGraceMs: 1000,          // how long a lock survives a dropout before TARGET LOST
+  reacquireDeg: 30,           // combo mode: re-lock a face if within this many degrees of the mark
+  sweepRangeDeg: 120,         // sweep pings fade to nothing this far from the mark
+  labels: ['GAYDAR', 'PROP RADAR', 'VIBE CHECK', 'FABULOMETER'],
+  // "max signal" face size, as a fraction of the frame's short side, per camera
+  sensitivity: { user: 0.45, environment: 0.18 },
+  // result thresholds for RESULT = AUTO (average signal during the scan)
+  autoThresholds: { high: 40, fab: 85 },
+};
+
+const MP_VERSION = '0.10.14';
+const MP_URL = `https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@${MP_VERSION}`;
+const FACE_MODEL = 'https://storage.googleapis.com/mediapipe-models/face_detector/blaze_face_short_range/float16/1/blaze_face_short_range.tflite';
+const POSE_MODEL = 'https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task';
+
+/* =====================================================================
+   STATE
+   ===================================================================== */
+const $ = (id) => document.getElementById(id);
+const clamp = (v, a = 0, b = 1) => Math.min(b, Math.max(a, v));
+const wrap180 = (a) => ((((a + 180) % 360) + 360) % 360) - 180;
+
+const saved = loadPrefs();
+const S = {
+  started: false,
+  facing: CONFIG.defaultCamera,
+  stream: null,
+  model: saved.model || CONFIG.defaultModel,
+  detectors: {},        // cached per model
+  delegate: 'GPU',
+  detectErrors: 0,
+  vision: null,         // mediapipe module
+  fileset: null,
+  modelStatus: 'loading',
+  faces: [],            // [{x,y,w,h,score}] in video pixels, unmirrored
+  target: null,         // current target face (video px)
+  targetHeld: false,    // lock is coasting through a dropout
+  lock: null,           // {box, lastSeen}
+  reacquire: false,
+  rawSignal: 0,
+  signal: 0,            // smoothed 0..100
+  sound: saved.sound || 'geiger',
+  muted: false,
+  labels: CONFIG.labels.slice(),
+  customLabel: saved.customLabel || '',
+  label: saved.label || CONFIG.labels[0],
+  forced: 'auto',
+  debug: !!saved.debug,
+  deck: true,
+  sens: Object.assign({}, CONFIG.sensitivity, saved.sens || {}),
+  scan: null,
+  detFps: 0,
+  motion: 'off',        // off | granted | denied | unsupported
+  heading: null,        // degrees, relative (gyro-fused), camera direction
+  headingOk: false,
+  mark: null,
+  sweepMode: saved.sweepMode || 'combo',   // combo | sweep | off
+  lastInput: '—',
+  tempStatus: null,     // {text, cls, until}
+  lastErr: '',
+};
+
+function loadPrefs() {
+  try { return JSON.parse(localStorage.getItem('propradar.v1')) || {}; } catch { return {}; }
+}
+function savePrefs() {
+  try {
+    localStorage.setItem('propradar.v1', JSON.stringify({
+      model: S.model, sound: S.sound, customLabel: S.customLabel, label: S.label,
+      debug: S.debug, sens: S.sens, sweepMode: S.sweepMode,
+    }));
+  } catch {}
+}
+
+/* =====================================================================
+   DETECTOR (MediaPipe Tasks Vision)
+   ===================================================================== */
+async function loadVision() {
+  try {
+    S.vision = await import(`${MP_URL}/vision_bundle.mjs`);
+    S.fileset = await S.vision.FilesetResolver.forVisionTasks(`${MP_URL}/wasm`);
+    await ensureDetector(S.model);
+  } catch (e) {
+    S.modelStatus = 'error';
+    S.lastErr = 'Detector failed to load: ' + (e && e.message || e);
+    console.error(e);
+  }
+  updateStartMsg();
+  renderControls();
+}
+
+async function ensureDetector(model) {
+  if (S.detectors[model]) { S.modelStatus = 'ready'; return; }
+  S.modelStatus = 'loading';
+  const { FaceDetector, PoseLandmarker } = S.vision;
+  const make = (delegate) => model === 'face'
+    ? FaceDetector.createFromOptions(S.fileset, {
+        baseOptions: { modelAssetPath: FACE_MODEL, delegate },
+        runningMode: 'VIDEO', minDetectionConfidence: 0.5,
+      })
+    : PoseLandmarker.createFromOptions(S.fileset, {
+        baseOptions: { modelAssetPath: POSE_MODEL, delegate },
+        runningMode: 'VIDEO', numPoses: 4, minPoseDetectionConfidence: 0.5, minTrackingConfidence: 0.5,
+      });
+  try {
+    S.detectors[model] = await make(S.delegate);
+  } catch (e) {
+    if (S.delegate === 'GPU') {
+      S.delegate = 'CPU';
+      S.detectors[model] = await make('CPU');
+    } else throw e;
+  }
+  S.modelStatus = 'ready';
+}
+
+let lastDetect = 0, lastTs = 0, detCount = 0, detWindow = 0;
+function detectStep(now) {
+  const det = S.detectors[S.model];
+  if (!det || S.modelStatus !== 'ready' || cam.readyState < 2 || !cam.videoWidth) return;
+  if (now - lastDetect < 1000 / CONFIG.detectFps) return;
+  lastDetect = now;
+  let ts = performance.now();
+  if (ts <= lastTs) ts = lastTs + 1;
+  lastTs = ts;
+  let res;
+  try {
+    res = det.detectForVideo(cam, ts);
+    S.detectErrors = 0;
+  } catch (e) {
+    S.lastErr = 'detect: ' + (e && e.message || e);
+    if (++S.detectErrors > 5 && S.delegate === 'GPU') {
+      // GPU path misbehaving on this device: rebuild on CPU
+      S.delegate = 'CPU'; S.detectors = {}; S.detectErrors = 0;
+      ensureDetector(S.model).catch((err) => { S.lastErr = String(err); });
+    }
+    return;
+  }
+  S.faces = S.model === 'face' ? parseFaces(res) : parseBodies(res);
+  detCount++;
+  if (now - detWindow > 1000) { S.detFps = detCount * 1000 / (now - detWindow); detCount = 0; detWindow = now; }
+}
+
+function parseFaces(res) {
+  return (res.detections || []).map((d) => {
+    const b = d.boundingBox;
+    return { x: b.originX, y: b.originY, w: b.width, h: b.height, score: d.categories?.[0]?.score ?? 0 };
+  });
+}
+
+// Body model: build a face-sized box from the head landmarks (nose, eyes, ears, mouth = 0..10)
+function parseBodies(res) {
+  const vw = cam.videoWidth, vh = cam.videoHeight, out = [];
+  for (const lm of res.landmarks || []) {
+    const head = lm.slice(0, 11).filter((p) => (p.visibility ?? 1) > 0.3);
+    const pts = head.length >= 3 ? head : lm;
+    let x0 = 1, y0 = 1, x1 = 0, y1 = 0;
+    for (const p of pts) { x0 = Math.min(x0, p.x); y0 = Math.min(y0, p.y); x1 = Math.max(x1, p.x); y1 = Math.max(y1, p.y); }
+    let w = (x1 - x0) * vw, h = (y1 - y0) * vh;
+    const cx = (x0 + x1) / 2 * vw, cy = (y0 + y1) / 2 * vh;
+    if (pts === head) { const s = Math.max(w, h) * 1.35; w = s; h = s * 1.2; }
+    out.push({ x: cx - w / 2, y: cy - h / 2, w, h, score: 1 });
+  }
+  return out;
+}
+
+/* =====================================================================
+   CAMERA
+   ===================================================================== */
+const cam = $('cam');
+
+async function startCamera(facing) {
+  if (S.stream) S.stream.getTracks().forEach((t) => t.stop());
+  S.stream = null;
+  const stream = await navigator.mediaDevices.getUserMedia({
+    audio: false,
+    video: { facingMode: { ideal: facing }, width: { ideal: 1280 }, height: { ideal: 720 } },
+  });
+  S.stream = stream;
+  S.facing = facing;
+  cam.srcObject = stream;
+  cam.classList.toggle('mirror', facing === 'user');
+  await cam.play().catch(() => {});
+  S.faces = []; S.target = null;
+  if (S.lock) { S.lock = null; S.reacquire = !!(S.mark !== null && S.sweepMode === 'combo'); }
+  renderControls();
+}
+
+async function flipCamera() {
+  const next = S.facing === 'user' ? 'environment' : 'user';
+  try { await startCamera(next); flash(next === 'user' ? 'FRONT CAMERA' : 'REAR CAMERA'); }
+  catch (e) { flash('CAMERA ERROR', 'alert'); S.lastErr = String(e); }
+}
+
+let wakeLock = null;
+async function keepAwake() {
+  try { if ('wakeLock' in navigator) wakeLock = await navigator.wakeLock.request('screen'); } catch {}
+}
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible' && S.started) {
+    keepAwake();
+    if (cam.paused) cam.play().catch(() => {});
+    if (AC && AC.state !== 'running') AC.resume().catch(() => {});
+    if (S.stream && S.stream.getVideoTracks().every((t) => t.readyState === 'ended')) startCamera(S.facing).catch(() => {});
+  }
+});
+
+/* =====================================================================
+   MOTION / GYRO HEADING
+   ===================================================================== */
+function requestMotion() {
+  const DOE = window.DeviceOrientationEvent;
+  let p;
+  if (DOE && typeof DOE.requestPermission === 'function') {
+    p = DOE.requestPermission().catch(() => 'denied');   // must run inside the START tap
+  } else {
+    p = Promise.resolve(DOE ? 'granted' : 'unsupported');
+  }
+  return p.then((state) => {
+    S.motion = state;
+    if (state === 'granted') window.addEventListener('deviceorientation', onOrient);
+    return state;
+  });
+}
+
+// iOS reports alpha relative to a gyro-fused reference, not the compass, so it is smooth indoors.
+// We rotate the camera's viewing axis into world space and take its horizontal bearing.
+function onOrient(e) {
+  if (e.alpha == null) return;
+  const d = Math.PI / 180;
+  const a = e.alpha * d, b = e.beta * d, g = e.gamma * d;
+  const cA = Math.cos(a), sA = Math.sin(a), cB = Math.cos(b), sB = Math.sin(b), cG = Math.cos(g), sG = Math.sin(g);
+  // third column of R = Rz(a)·Rx(b)·Ry(g): device +Z (out of the screen) in world coords
+  let x = cA * sG + cG * sA * sB;
+  let y = sA * sG - cA * cG * sB;
+  if (S.facing === 'environment') { x = -x; y = -y; }   // rear camera looks out the back
+  const mag = Math.hypot(x, y);
+  S.headingOk = mag > 0.25;          // phone lying flat: bearing undefined, hold last value
+  if (!S.headingOk) return;
+  const h = Math.atan2(x, y) / d;    // clockwise-positive bearing
+  S.heading = S.heading == null ? h : wrap180(S.heading + 0.5 * wrap180(h - S.heading));
+}
+
+// + means the mark is to the right: turn right
+function markOffset() {
+  if (S.mark == null || S.heading == null) return null;
+  return wrap180(S.mark - S.heading);
+}
+
+function setMark() {
+  if (S.heading == null) { flash(S.motion === 'denied' ? 'MOTION ACCESS DENIED' : 'NO MOTION DATA', 'alert'); return false; }
+  S.mark = S.heading;
+  return true;
+}
+
+/* =====================================================================
+   AUDIO
+   ===================================================================== */
+let AC = null, master = null, noiseBuf = null, nextBeat = 0;
+
+function initAudio() {
+  if (AC) { AC.resume(); return; }
+  try { if (navigator.audioSession) navigator.audioSession.type = 'playback'; } catch {}  // plays through the silent switch on iOS 16.4+
+  const Ctx = window.AudioContext || window.webkitAudioContext;
+  if (!Ctx) return;
+  AC = new Ctx();
+  master = AC.createGain();
+  master.gain.value = S.muted ? 0 : 0.9;
+  const comp = AC.createDynamicsCompressor();
+  master.connect(comp); comp.connect(AC.destination);
+  const len = Math.floor(AC.sampleRate * 0.03);
+  noiseBuf = AC.createBuffer(1, len, AC.sampleRate);
+  const ch = noiseBuf.getChannelData(0);
+  for (let i = 0; i < len; i++) ch[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, 6);
+  AC.resume();
+  tone(880, 0, 0.08, 'sine', 0.25);
+  tone(1320, 0.09, 0.12, 'sine', 0.25);
+}
+
+function tone(freq, at, dur, type = 'sine', vol = 0.3, slideTo = null) {
+  if (!AC) return;
+  const t = AC.currentTime + at;
+  const o = AC.createOscillator(), g = AC.createGain();
+  o.type = type;
+  o.frequency.setValueAtTime(freq, t);
+  if (slideTo) o.frequency.exponentialRampToValueAtTime(slideTo, t + dur);
+  g.gain.setValueAtTime(0.0001, t);
+  g.gain.exponentialRampToValueAtTime(vol, t + 0.008);
+  g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+  o.connect(g).connect(master);
+  o.start(t); o.stop(t + dur + 0.03);
+}
+
+function geigerClick(s, vol) {
+  const t = AC.currentTime;
+  const src = AC.createBufferSource();
+  src.buffer = noiseBuf;
+  src.playbackRate.value = 0.8 + 0.9 * s;
+  const bp = AC.createBiquadFilter();
+  bp.type = 'bandpass'; bp.frequency.value = 1600 + 3400 * s; bp.Q.value = 0.8;
+  const g = AC.createGain(); g.gain.value = vol * 2.2;
+  src.connect(bp).connect(g).connect(master);
+  src.start(t);
+}
+
+function sonarPing(s, vol) {
+  const f = 520 + 1000 * s;
+  const dur = 0.38 - 0.28 * s;
+  tone(f, 0, dur, 'sine', vol * 0.7);
+  tone(f * 2, 0, dur * 0.5, 'triangle', vol * 0.12);
+  if (s < 0.6) tone(f, 0.12, dur * 0.8, 'sine', vol * 0.15);  // faint echo
+}
+
+function audioTick() {
+  if (!AC || S.scan) return;
+  const now = AC.currentTime;
+  const s = S.signal / 100;
+  if (s < 0.02) {
+    // idle: a few stray background clicks, or a slow quiet ping
+    if (now >= nextBeat) {
+      if (S.sound === 'geiger') { geigerClick(0, 0.06); nextBeat = now + 0.5 + Math.random() * 2.5; }
+      else { sonarPing(0, 0.08); nextBeat = now + 2.6; }
+    }
+    return;
+  }
+  const iv = 1.0 * Math.pow(0.04, s);         // ~1 s apart at the bottom, ~40 ms (a rattle) at the top
+  if (nextBeat > now + iv) nextBeat = now + iv;
+  if (now >= nextBeat) {
+    const vol = 0.2 + 0.8 * s;
+    if (S.sound === 'geiger') { geigerClick(s, vol); nextBeat = now + iv * (0.55 + 0.9 * Math.random()); }
+    else { sonarPing(s, vol); nextBeat = now + iv; }
+  }
+}
+
+function setMuted(m) {
+  S.muted = m;
+  if (master) master.gain.setTargetAtTime(m ? 0 : 0.9, AC.currentTime, 0.02);
+  renderControls();
+}
+
+/* =====================================================================
+   TARGETING
+   ===================================================================== */
+const scope = $('scope');
+let W = 0, H = 0;
+
+// video pixels -> scope CSS pixels, honouring object-fit: cover and front-camera mirroring
+function toScreen(b) {
+  const vw = cam.videoWidth, vh = cam.videoHeight;
+  if (!vw || !vh) return { x: 0, y: 0, w: 0, h: 0, cx: 0, cy: 0 };
+  const k = Math.max(W / vw, H / vh);
+  const ox = (W - vw * k) / 2, oy = (H - vh * k) / 2;
+  let x = ox + b.x * k;
+  const y = oy + b.y * k, w = b.w * k, h = b.h * k;
+  if (S.facing === 'user') x = W - x - w;
+  return { x, y, w, h, cx: x + w / 2, cy: y + h / 2 };
+}
+
+function pickTarget(faces) {
+  const cx = W / 2, cy = H / 2, tie = 0.05 * Math.hypot(W, H);
+  let best = null, bestD = Infinity;
+  for (const f of faces) {
+    const s = toScreen(f), d = Math.hypot(s.cx - cx, s.cy - cy);
+    const nearer = d < bestD - tie;
+    const tieButBigger = Math.abs(d - bestD) <= tie && best && f.w > best.w;
+    if (!best || nearer || tieButBigger) { best = f; bestD = d; }
+  }
+  return best;
+}
+
+function matchLock(box, faces) {
+  const lx = box.x + box.w / 2, ly = box.y + box.h / 2;
+  let best = null, bestD = Infinity;
+  for (const f of faces) {
+    const d = Math.hypot(f.x + f.w / 2 - lx, f.y + f.h / 2 - ly) / Math.max(box.w, f.w);
+    const r = f.w / box.w;
+    if (d < 1.2 && r > 0.5 && r < 2 && d < bestD) { best = f; bestD = d; }
+  }
+  return best;
+}
+
+function updateTargeting(now) {
+  const faces = S.sweepMode === 'sweep' ? [] : S.faces;
+  S.targetHeld = false;
+  if (S.lock) {
+    const m = matchLock(S.lock.box, faces);
+    if (m) { S.lock.box = m; S.lock.lastSeen = now; S.target = m; }
+    else if (now - S.lock.lastSeen <= CONFIG.lockGraceMs) { S.target = S.lock.box; S.targetHeld = true; }
+    else {
+      S.lock = null; S.target = null;
+      S.reacquire = S.mark !== null && S.sweepMode === 'combo';
+      flash('TARGET LOST', 'alert', 1600);
+      if (AC && !S.scan) tone(420, 0, 0.25, 'square', 0.12, 180);
+    }
+  } else {
+    const prev = S.target;
+    S.target = pickTarget(faces);
+    if (S.target && S.reacquire) {
+      const off = markOffset();
+      if (off === null || Math.abs(off) < CONFIG.reacquireDeg) {
+        S.lock = { box: S.target, lastSeen: now };
+        S.reacquire = false;
+        flash('LOCK RESUMED', 'locked', 1400);
+        if (AC && !S.scan) { tone(990, 0, 0.07, 'square', 0.15); tone(1480, 0.08, 0.1, 'square', 0.15); }
+      }
+    }
+    if (S.target && !prev && !S.lock && AC && !S.scan) tone(1200, 0, 0.05, 'sine', 0.12);
+  }
+}
+
+function faceSignal(t, now) {
+  if (!t || !cam.videoWidth) return 0;
+  const frac = t.w / Math.min(cam.videoWidth, cam.videoHeight);
+  const size = clamp(frac / S.sens[S.facing]);
+  const s = toScreen(t);
+  const d = Math.hypot(s.cx - W / 2, s.cy - H / 2) / (0.5 * Math.hypot(W, H));
+  const center = clamp(1 - d / 0.8);
+  let v = 100 * Math.pow(size, 0.85) * (0.3 + 0.7 * center);
+  if (S.targetHeld && S.lock) v *= clamp(1 - (now - S.lock.lastSeen) / CONFIG.lockGraceMs);
+  return Math.max(v, 3);
+}
+
+function sweepSignal() {
+  const off = markOffset();
+  if (off === null) return 0;
+  return 100 * Math.pow(clamp(1 - Math.abs(off) / CONFIG.sweepRangeDeg), 2);
+}
+
+let lastSigT = 0;
+function updateSignal(now) {
+  const fs = faceSignal(S.target, now);
+  const ss = S.sweepMode === 'off' ? 0 : sweepSignal();
+  S.rawSignal = S.sweepMode === 'sweep' ? ss : Math.max(fs, S.sweepMode === 'combo' && !S.target ? ss * 0.9 : 0);
+  const dt = Math.min(0.2, (now - lastSigT) / 1000 || 0.016);
+  lastSigT = now;
+  S.signal += (S.rawSignal - S.signal) * (1 - Math.exp(-dt / 0.12));
+  if (S.scan && !S.scan.revealed) { S.scan.sum += S.signal; S.scan.n++; }
+}
+
+/* =====================================================================
+   SCAN SEQUENCE
+   ===================================================================== */
+const RESULTS = ['auto', 'low', 'high', 'fab'];
+const RESULT_NAMES = { auto: 'AUTO', low: 'LOW', high: 'HIGH', fab: 'TOO FAB' };
+const T_CLIMB = 2300, T_STUTTER = 3400, T_PAUSE = 5000, T_SHOW = 6500;
+
+function startScan() {
+  if (S.scan) endScan();
+  hideResult();
+  S.scan = { t0: performance.now(), value: 0, phase: 'climb', sum: 0, n: 0, lastJump: 0, nextBeat: 0, osc: null, gain: null, revealed: false, result: null, final: 0 };
+  if (AC) {
+    const o = AC.createOscillator(), g = AC.createGain(), lp = AC.createBiquadFilter();
+    o.type = 'sawtooth'; o.frequency.value = 180;
+    lp.type = 'lowpass'; lp.frequency.value = 1600;
+    g.gain.value = 0.0001; g.gain.exponentialRampToValueAtTime(0.09, AC.currentTime + 0.1);
+    o.connect(lp).connect(g).connect(master); o.start();
+    S.scan.osc = o; S.scan.gain = g;
+  }
+}
+
+function stopScanOsc() {
+  const sc = S.scan;
+  if (sc && sc.osc) {
+    sc.gain.gain.setTargetAtTime(0.0001, AC.currentTime, 0.02);
+    sc.osc.stop(AC.currentTime + 0.15);
+    sc.osc = null;
+  }
+}
+
+function endScan() { stopScanOsc(); S.scan = null; }
+
+function decideResult(sc) {
+  if (S.forced !== 'auto') return S.forced;
+  const avg = sc.n ? sc.sum / sc.n : S.signal;
+  if (avg >= CONFIG.autoThresholds.fab) return 'fab';
+  if (avg >= CONFIG.autoThresholds.high) return 'high';
+  return 'low';
+}
+
+function updateScan(now) {
+  const sc = S.scan;
+  if (!sc) return;
+  const el = now - sc.t0;
+  if (el < T_CLIMB) {
+    sc.phase = 'climb';
+    const p = el / T_CLIMB;
+    sc.value = clamp(78 * (1 - Math.pow(1 - p, 2.2)) + (Math.random() - 0.5) * 7, 0, 100);
+  } else if (el < T_STUTTER) {
+    sc.phase = 'stutter';
+    if (sc.osc && sc.osc.type !== 'square') sc.osc.type = 'square';
+    if (now - sc.lastJump > 90 + Math.random() * 140) {
+      sc.lastJump = now;
+      sc.value = Math.random() < 0.3 ? 8 + Math.random() * 20 : 45 + Math.random() * 52;
+      if (AC) geigerClick(0.8, 0.5);
+    }
+  } else if (el < T_PAUSE) {
+    if (sc.phase !== 'pause') { sc.phase = 'pause'; stopScanOsc(); sc.value = 50; sc.nextBeat = 0; }
+    if (AC && now >= sc.nextBeat) { tone(72, 0, 0.18, 'sine', 0.5, 40); sc.nextBeat = now + 520; }
+  } else if (!sc.revealed) {
+    sc.revealed = true; sc.phase = 'result';
+    sc.result = decideResult(sc);
+    sc.final = sc.result === 'low' ? 8 + Math.random() * 22 : sc.result === 'high' ? 64 + Math.random() * 28 : 100;
+    sc.revealAt = now;
+    showResult(sc.result, sc.final);
+    playJingle(sc.result);
+  } else {
+    const p = clamp((now - sc.revealAt) / 400);
+    sc.value = 50 + (sc.final - 50) * p;
+    if (el > T_PAUSE + T_SHOW) { endScan(); hideResult(); }
+  }
+  if (sc.osc) sc.osc.frequency.setTargetAtTime(160 + sc.value * 9, AC.currentTime, 0.03);
+}
+
+function playJingle(r) {
+  if (!AC) return;
+  if (r === 'low') {
+    tone(392, 0, 0.32, 'sawtooth', 0.18, 370);
+    tone(349, 0.36, 0.32, 'sawtooth', 0.18, 330);
+    tone(294, 0.72, 0.75, 'sawtooth', 0.2, 220);
+  } else if (r === 'high') {
+    [523, 659, 784, 1047].forEach((f, i) => tone(f, i * 0.09, 0.18, 'square', 0.16));
+    tone(1568, 0.38, 0.5, 'triangle', 0.18);
+  } else {
+    const scale = [523, 587, 659, 784, 880, 1047, 1175, 1319, 1568, 1760, 2093];
+    scale.forEach((f, i) => tone(f, i * 0.05, 0.25, 'triangle', 0.16));
+    scale.slice().reverse().forEach((f, i) => tone(f * 1.5, 0.6 + i * 0.04, 0.2, 'sine', 0.1));
+    for (let i = 0; i < 14; i++) setTimeout(() => AC && geigerClick(1, 0.4), 1100 + i * 45);
+    tone(2093, 1.1, 0.9, 'sine', 0.14, 4186);
+  }
+}
+
+function showResult(r, val) {
+  const el = $('result');
+  el.className = r;
+  $('resultCap').textContent = S.label + ' READING';
+  $('resultBig').textContent = r === 'low' ? 'LOW' : r === 'high' ? 'HIGH' : 'TOO FABULOUS TO MEASURE';
+  $('resultNum').textContent = r === 'fab' ? 'METER OVERLOAD · ERR 100+' : Math.round(val) + '%';
+  el.hidden = false;
+}
+function hideResult() { $('result').hidden = true; }
+$('result').addEventListener('click', () => { endScan(); hideResult(); });
+
+/* =====================================================================
+   STATUS
+   ===================================================================== */
+function flash(text, cls = '', ms = 1200) { S.tempStatus = { text, cls, until: performance.now() + ms }; }
+
+function statusFor(now) {
+  if (S.tempStatus && now < S.tempStatus.until) return S.tempStatus;
+  if (!S.started) return { text: 'STANDBY', cls: '' };
+  if (S.scan) {
+    const p = S.scan.phase;
+    if (p === 'climb') return { text: 'SCANNING TARGET…', cls: '' };
+    if (p === 'stutter') return { text: 'INTERFERENCE DETECTED', cls: 'alert' };
+    if (p === 'pause') return { text: Math.floor(now / 350) % 2 ? 'ANALYZING…' : 'ANALYZING', cls: '' };
+    return { text: 'RESULT', cls: '' };
+  }
+  if (S.modelStatus === 'loading' && S.sweepMode !== 'sweep') return { text: 'LOADING DETECTOR…', cls: '' };
+  if (S.modelStatus === 'error' && S.sweepMode !== 'sweep') return { text: 'DETECTOR ERROR', cls: 'alert' };
+  if (S.lock) return S.targetHeld ? { text: 'SIGNAL WEAK…', cls: 'locked' } : { text: 'TARGET LOCKED', cls: 'locked' };
+  if (S.target) return { text: 'TARGET ACQUIRED', cls: '' };
+  const off = S.sweepMode !== 'off' ? markOffset() : null;
+  if (off !== null) {
+    if (Math.abs(off) < 8) return { text: 'ON BEARING', cls: 'bearing' };
+    return { text: `TURN ${off > 0 ? 'RIGHT' : 'LEFT'} ${Math.round(Math.abs(off))}°`, cls: 'bearing' };
+  }
+  return { text: 'SCANNING…', cls: '' };
+}
+
+/* =====================================================================
+   DRAWING
+   ===================================================================== */
+const hud = $('hud'), ctx = hud.getContext('2d');
+let dpr = 1;
+function resize() {
+  W = scope.clientWidth; H = scope.clientHeight;
+  dpr = Math.min(window.devicePixelRatio || 1, 3);
+  hud.width = Math.round(W * dpr); hud.height = Math.round(H * dpr);
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+}
+new ResizeObserver(resize).observe(scope);
+
+const C = { ink: '#f4ecf7', dim: 'rgba(244,236,247,0.5)', faint: 'rgba(244,236,247,0.18)', hot: '#ff4fd8', lock: '#ffb547', cool: '#7ee8ff' };
+let sweepAngle = 0;
+
+function draw(now, dt) {
+  ctx.clearRect(0, 0, W, H);
+  if (!S.started) return;
+  const cx = W / 2, cy = H / 2, R = Math.min(W, H) * 0.3;
+  const sig = (S.scan ? S.scan.value : S.signal) / 100;
+  const tint = S.lock ? C.lock : S.target ? C.hot : C.ink;
+
+  // radar sweep line inside the reticle
+  sweepAngle += dt * (0.8 + sig * 5);
+  ctx.save();
+  ctx.translate(cx, cy);
+  const grad = ctx.createConicGradient ? ctx.createConicGradient(sweepAngle - 0.9, 0, 0) : null;
+  if (grad) {
+    grad.addColorStop(0, 'rgba(255,79,216,0)');
+    grad.addColorStop(0.14, `rgba(255,79,216,${0.05 + sig * 0.18})`);
+    grad.addColorStop(0.145, 'rgba(255,79,216,0)');
+    ctx.fillStyle = grad;
+    ctx.beginPath(); ctx.arc(0, 0, R, 0, Math.PI * 2); ctx.fill();
+  }
+  // outer ring + ticks
+  ctx.strokeStyle = C.faint; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.arc(0, 0, R, 0, Math.PI * 2); ctx.stroke();
+  ctx.beginPath(); ctx.arc(0, 0, R * 0.5, 0, Math.PI * 2); ctx.stroke();
+  for (let i = 0; i < 72; i++) {
+    const a = i / 72 * Math.PI * 2, long = i % 6 === 0;
+    ctx.strokeStyle = long ? C.dim : C.faint;
+    ctx.beginPath();
+    ctx.moveTo(Math.cos(a) * R, Math.sin(a) * R);
+    ctx.lineTo(Math.cos(a) * (R + (long ? 10 : 5)), Math.sin(a) * (R + (long ? 10 : 5)));
+    ctx.stroke();
+  }
+  // signal arc
+  ctx.lineWidth = 4; ctx.lineCap = 'round';
+  ctx.strokeStyle = S.lock ? C.lock : C.hot;
+  ctx.shadowColor = ctx.strokeStyle; ctx.shadowBlur = 10;
+  if (sig > 0.005) { ctx.beginPath(); ctx.arc(0, 0, R + 16, -Math.PI / 2, -Math.PI / 2 + sig * Math.PI * 2); ctx.stroke(); }
+  ctx.shadowBlur = 0;
+  // crosshair
+  ctx.strokeStyle = tint; ctx.lineWidth = 2; ctx.lineCap = 'butt';
+  const g = R * 0.16;
+  ctx.beginPath();
+  ctx.moveTo(-R * 0.62, 0); ctx.lineTo(-g, 0); ctx.moveTo(g, 0); ctx.lineTo(R * 0.62, 0);
+  ctx.moveTo(0, -R * 0.62); ctx.lineTo(0, -g); ctx.moveTo(0, g); ctx.lineTo(0, R * 0.62);
+  ctx.stroke();
+  ctx.fillStyle = tint; ctx.beginPath(); ctx.arc(0, 0, 2.5, 0, Math.PI * 2); ctx.fill();
+  ctx.restore();
+
+  // faces
+  if (S.sweepMode !== 'sweep') {
+    for (const f of S.faces) {
+      if (f === S.target) continue;
+      brackets(toScreen(f), C.dim, 1.5, 0.22);
+    }
+  }
+  if (S.target) {
+    const s = toScreen(S.target);
+    const col = S.lock ? C.lock : C.hot;
+    if (S.targetHeld) ctx.setLineDash([6, 6]);
+    brackets(s, col, 3, 0.3);
+    ctx.setLineDash([]);
+    // leader line from reticle
+    if (Math.hypot(s.cx - cx, s.cy - cy) > R * 0.2) {
+      ctx.strokeStyle = col; ctx.globalAlpha = 0.45; ctx.lineWidth = 1; ctx.setLineDash([3, 5]);
+      ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(s.cx, s.cy); ctx.stroke();
+      ctx.setLineDash([]); ctx.globalAlpha = 1;
+    }
+    tag(s, S.lock ? (S.targetHeld ? 'LCK ?' : 'LCK') : 'TGT', col);
+  }
+
+  // bearing tape + turn arrows
+  const off = S.sweepMode !== 'off' ? markOffset() : null;
+  if (S.heading != null && S.sweepMode !== 'off') drawTape(off);
+  if (off !== null && !S.target && !S.scan && Math.abs(off) >= 8) drawArrows(cx, cy, R, off, now);
+}
+
+function brackets(s, col, lw, f) {
+  const lx = s.w * f, ly = s.h * f;
+  ctx.strokeStyle = col; ctx.lineWidth = lw;
+  ctx.beginPath();
+  ctx.moveTo(s.x, s.y + ly); ctx.lineTo(s.x, s.y); ctx.lineTo(s.x + lx, s.y);
+  ctx.moveTo(s.x + s.w - lx, s.y); ctx.lineTo(s.x + s.w, s.y); ctx.lineTo(s.x + s.w, s.y + ly);
+  ctx.moveTo(s.x + s.w, s.y + s.h - ly); ctx.lineTo(s.x + s.w, s.y + s.h); ctx.lineTo(s.x + s.w - lx, s.y + s.h);
+  ctx.moveTo(s.x + lx, s.y + s.h); ctx.lineTo(s.x, s.y + s.h); ctx.lineTo(s.x, s.y + s.h - ly);
+  ctx.stroke();
+}
+
+function tag(s, text, col) {
+  ctx.font = '600 11px "IBM Plex Mono", monospace';
+  const w = ctx.measureText(text).width + 10;
+  ctx.fillStyle = col; ctx.fillRect(s.x, s.y - 18, w, 16);
+  ctx.fillStyle = '#08070b'; ctx.fillText(text, s.x + 5, s.y - 6);
+}
+
+function drawTape(off) {
+  const tw = Math.min(W * 0.78, 340), ppd = tw / 120, x0 = (W - tw) / 2, y = H - 64;
+  ctx.save();
+  ctx.fillStyle = 'rgba(8,7,11,0.5)'; ctx.fillRect(x0, y - 16, tw, 26);
+  ctx.beginPath(); ctx.rect(x0, y - 20, tw, 34); ctx.clip();
+  ctx.strokeStyle = C.dim; ctx.lineWidth = 1;
+  const h = S.heading;
+  for (let d = Math.ceil((h - 60) / 5) * 5; d <= h + 60; d += 5) {
+    const x = W / 2 + (d - h) * ppd, long = ((d % 15) + 15) % 15 === 0;
+    ctx.beginPath(); ctx.moveTo(x, y + 8); ctx.lineTo(x, y + 8 - (long ? 12 : 6)); ctx.stroke();
+  }
+  ctx.restore();
+  // centre caret
+  ctx.fillStyle = C.ink;
+  ctx.beginPath(); ctx.moveTo(W / 2, y - 6); ctx.lineTo(W / 2 - 5, y - 14); ctx.lineTo(W / 2 + 5, y - 14); ctx.fill();
+  if (off !== null) {
+    const inside = Math.abs(off) <= 58;
+    const x = W / 2 + clamp(off, -58, 58) * ppd;
+    ctx.fillStyle = C.cool; ctx.shadowColor = C.cool; ctx.shadowBlur = 8;
+    ctx.beginPath();
+    if (inside) { ctx.moveTo(x, y + 10); ctx.lineTo(x - 6, y - 2); ctx.lineTo(x + 6, y - 2); }
+    else { const d = Math.sign(off); ctx.moveTo(x + d * 8, y); ctx.lineTo(x - d * 2, y - 8); ctx.lineTo(x - d * 2, y + 8); }
+    ctx.fill(); ctx.shadowBlur = 0;
+    ctx.font = '600 11px "IBM Plex Mono", monospace'; ctx.textAlign = 'center';
+    ctx.fillText(`MARK ${off > 0 ? '+' : ''}${Math.round(off)}°`, W / 2, y + 24);
+    ctx.textAlign = 'left';
+  }
+}
+
+function drawArrows(cx, cy, R, off, now) {
+  const dir = off > 0 ? 1 : -1;
+  const n = Math.abs(off) > 90 ? 3 : Math.abs(off) > 35 ? 2 : 1;
+  const phase = (now / 450) % 1;
+  ctx.strokeStyle = C.cool; ctx.lineWidth = 4; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+  for (let i = 0; i < n; i++) {
+    const x = cx + dir * (R * 0.75 + i * 18);
+    ctx.globalAlpha = 0.35 + 0.65 * (((phase * n) | 0) === i ? 1 : 0.3);
+    ctx.beginPath();
+    ctx.moveTo(x - dir * 6, cy - 14); ctx.lineTo(x + dir * 6, cy); ctx.lineTo(x - dir * 6, cy + 14);
+    ctx.stroke();
+  }
+  ctx.globalAlpha = 1;
+}
+
+/* =====================================================================
+   DOM / CONTROLS
+   ===================================================================== */
+const bar = $('bar');
+for (let i = 0; i < 24; i++) bar.appendChild(document.createElement('i'));
+const segs = [...bar.children];
+
+function setSmall(id, text) { $(id).querySelector('small').textContent = text; }
+
+function renderControls() {
+  setSmall('kFlip', S.facing === 'user' ? 'FRONT' : 'REAR');
+  $('camBadge').textContent = S.facing === 'user' ? 'FRONT CAM' : 'REAR CAM';
+  const k = $('kLock');
+  k.firstChild.textContent = S.lock ? 'RELEASE' : 'LOCK';
+  k.classList.toggle('lockon', !!S.lock);
+  setSmall('kLock', S.lock ? 'LOCKED' : S.target ? 'READY' : 'NO TARGET');
+  setSmall('kResult', RESULT_NAMES[S.forced]);
+  $('kResult').classList.toggle('on', S.forced !== 'auto');
+  setSmall('kSound', S.sound === 'geiger' ? 'GEIGER' : 'SONAR');
+  setSmall('kMute', S.muted ? 'ON' : 'OFF');
+  $('kMute').classList.toggle('warn', S.muted);
+  $('muteBadge').hidden = !S.muted;
+  setSmall('kDebug', S.debug ? 'ON' : 'OFF');
+  $('kDebug').classList.toggle('on', S.debug);
+  $('debug').hidden = !S.debug;
+  const km = $('kMark');
+  km.firstChild.textContent = S.mark === null ? 'MARK' : 'UNMARK';
+  km.classList.toggle('bearing', S.mark !== null);
+  setSmall('kMark', S.mark === null ? 'SET BEARING' : 'CLEAR');
+  $('kZero').disabled = S.mark === null;
+  setSmall('kSweep', { combo: 'COMBO', sweep: 'SWEEP ONLY', off: 'OFF' }[S.sweepMode]);
+  $('kSweep').classList.toggle('bearing', S.sweepMode !== 'off');
+  setSmall('kModel', (S.model === 'face' ? 'FACE' : 'BODY') + (S.modelStatus === 'loading' ? ' …' : ''));
+  $('labelWord').textContent = S.label;
+  $('startTitle').textContent = S.label;
+  const pct = Math.round(S.sens[S.facing] * 100);
+  $('sensSlider').value = pct;
+  $('sensLabel').textContent = `MAX SIGNAL AT ${pct}% FRAME`;
+  $('deckToggle').textContent = S.deck ? 'HIDE PANEL' : 'SHOW PANEL';
+  $('deck').hidden = !S.deck;
+}
+
+let lastDom = 0, lastLockLabel = null;
+function renderLive(now) {
+  const val = S.scan ? S.scan.value : S.signal;
+  const on = Math.round(val / 100 * segs.length);
+  segs.forEach((s, i) => { s.classList.toggle('on', i < on); s.classList.toggle('hi', i >= segs.length - 3); });
+  bar.classList.toggle('locked', !!S.lock && !S.scan);
+  bar.classList.toggle('fab', !!(S.scan && S.scan.result === 'fab'));
+  $('sigNum').textContent = Math.round(val);
+  const st = statusFor(now), el = $('status');
+  if (el.textContent !== st.text) el.textContent = st.text;
+  el.className = st.cls || '';
+  const lockLabel = (S.lock ? 'L' : '') + (S.target ? 'T' : '');
+  if (lockLabel !== lastLockLabel) { lastLockLabel = lockLabel; renderControls(); }
+
+  if (S.debug && now - lastDom > 200) {
+    lastDom = now;
+    const t = S.target, mn = Math.min(cam.videoWidth || 1, cam.videoHeight || 1);
+    const off = markOffset();
+    $('debug').textContent = [
+      `DET    ${S.detFps.toFixed(1)} fps  ${S.model.toUpperCase()} ${S.delegate}  ${S.modelStatus}`,
+      `FACES  ${S.faces.length}`,
+      `SIZE   ${t ? (t.w / mn * 100).toFixed(1) + '% of frame' : '—'}`,
+      `SIGNAL ${S.signal.toFixed(1)}  raw ${S.rawSignal.toFixed(1)}`,
+      `CAM    ${S.facing === 'user' ? 'front (mirrored)' : 'rear'}  ${cam.videoWidth}×${cam.videoHeight}`,
+      `LOCK   ${S.lock ? (S.targetHeld ? 'holding' : 'tracking') : S.reacquire ? 'waiting to resume' : 'none'}`,
+      `MOTION ${S.motion}  heading ${S.heading == null ? '—' : S.heading.toFixed(1) + '°'}${S.headingOk ? '' : ' (flat)'}`,
+      `MARK   ${S.mark == null ? '—' : 'offset ' + off.toFixed(1) + '°'}  sweep ${S.sweepMode}`,
+      `INPUT  ${S.lastInput}`,
+      S.lastErr ? `ERR    ${S.lastErr.slice(0, 60)}` : '',
+    ].filter(Boolean).join('\n');
+  }
+}
+
+/* ---------- actions (shared by on-screen buttons now, controller in phase 3) ---------- */
+const actions = {
+  flip: () => flipCamera(),
+  lock: () => {
+    if (S.lock) { S.lock = null; S.reacquire = false; flash('LOCK RELEASED'); }
+    else if (S.target && !S.targetHeld) {
+      S.lock = { box: S.target, lastSeen: performance.now() };
+      S.reacquire = false;
+      if (S.heading != null) S.mark = S.heading;     // lock-on also marks the bearing
+      flash('TARGET LOCKED', 'locked');
+      if (AC) { tone(990, 0, 0.07, 'square', 0.15); tone(1480, 0.08, 0.12, 'square', 0.15); }
+    } else { flash('NO TARGET', 'alert'); }
+    renderControls();
+  },
+  scan: () => startScan(),
+  result: () => { S.forced = RESULTS[(RESULTS.indexOf(S.forced) + 1) % RESULTS.length]; renderControls(); },
+  sound: () => { S.sound = S.sound === 'geiger' ? 'sonar' : 'geiger'; savePrefs(); renderControls(); },
+  mute: () => setMuted(!S.muted),
+  label: () => {
+    const list = S.customLabel ? [...S.labels, S.customLabel] : S.labels;
+    S.label = list[(list.indexOf(S.label) + 1) % list.length];
+    savePrefs(); renderControls();
+  },
+  debug: () => { S.debug = !S.debug; savePrefs(); renderControls(); },
+  mark: () => {
+    if (S.mark !== null) { S.mark = null; S.reacquire = false; flash('MARK CLEARED'); }
+    else if (setMark()) flash('BEARING MARKED', 'bearing');
+    renderControls();
+  },
+  rezero: () => { if (S.mark !== null && setMark()) flash('RE-ZEROED', 'bearing'); },
+  sweep: () => {
+    const order = ['combo', 'sweep', 'off'];
+    S.sweepMode = order[(order.indexOf(S.sweepMode) + 1) % order.length];
+    if (S.sweepMode === 'sweep') { S.lock = null; S.target = null; }
+    savePrefs(); renderControls();
+  },
+  model: async () => {
+    if (!S.vision) return;
+    S.model = S.model === 'face' ? 'body' : 'face';
+    S.faces = []; S.target = null; S.lock = null;
+    renderControls();
+    try { await ensureDetector(S.model); } catch (e) { S.modelStatus = 'error'; S.lastErr = String(e); }
+    savePrefs(); renderControls();
+  },
+};
+
+const bind = (id, fn) => $(id).addEventListener('click', fn);
+bind('kFlip', actions.flip);
+bind('kLock', actions.lock);
+bind('kScan', actions.scan);
+bind('kResult', actions.result);
+bind('kSound', actions.sound);
+bind('kMute', actions.mute);
+bind('kLabel', actions.label);
+bind('kDebug', actions.debug);
+bind('kMark', actions.mark);
+bind('kZero', actions.rezero);
+bind('kSweep', actions.sweep);
+bind('kModel', actions.model);
+bind('deckToggle', () => { S.deck = !S.deck; renderControls(); });
+
+$('sensSlider').addEventListener('input', (e) => {
+  S.sens[S.facing] = e.target.value / 100;
+  savePrefs(); renderControls();
+});
+
+// tap the label word to type your own
+bind('labelWord', () => {
+  $('labelInput').value = S.customLabel || S.label;
+  $('labelEditor').hidden = false;
+  setTimeout(() => $('labelInput').focus(), 50);
+});
+bind('labelCancel', () => { $('labelEditor').hidden = true; });
+$('labelForm').addEventListener('submit', (e) => {
+  e.preventDefault();
+  const v = $('labelInput').value.trim().toUpperCase().slice(0, 16);
+  if (v) { S.customLabel = CONFIG.labels.includes(v) ? '' : v; S.label = v; savePrefs(); }
+  $('labelEditor').hidden = true;
+  renderControls();
+});
+
+// record raw key input for the debug overlay (controller mapping arrives in phase 3)
+window.addEventListener('keydown', (e) => {
+  if (e.target === $('labelInput')) return;
+  S.lastInput = `key "${e.key}" (${e.code})`;
+});
+
+/* =====================================================================
+   START
+   ===================================================================== */
+function updateStartMsg() {
+  const m = $('startMsg');
+  if (!window.isSecureContext) {
+    m.textContent = 'This page needs HTTPS for camera access. Open it from the Netlify link.';
+    m.className = 'err'; return;
+  }
+  if (S.modelStatus === 'error') { m.textContent = S.lastErr + ' — check the connection and reload.'; m.className = 'err'; return; }
+  m.className = '';
+  m.textContent = S.modelStatus === 'ready' ? 'Detector ready.' : 'Loading face detector…';
+}
+
+$('startBtn').addEventListener('click', async () => {
+  const motionP = requestMotion();     // iOS: permission prompts must start inside the tap
+  initAudio();
+  $('startBtn').disabled = true;
+  try {
+    if (!navigator.mediaDevices?.getUserMedia) throw Object.assign(new Error('Camera API unavailable'), { name: 'NoAPI' });
+    await startCamera(S.facing);
+  } catch (e) {
+    $('startBtn').disabled = false;
+    const m = $('startMsg');
+    m.className = 'err';
+    m.textContent = e.name === 'NotAllowedError'
+      ? 'Camera access was denied. Allow it in Settings → Safari → Camera, then reload.'
+      : e.name === 'NoAPI' ? 'This browser has no camera access here. Open the HTTPS link in Safari.'
+      : 'Camera failed to start: ' + (e.message || e.name);
+    return;
+  }
+  S.started = true;
+  $('startScreen').hidden = true;
+  keepAwake();
+  resize();
+  const ms = await motionP;
+  if (ms === 'denied') flash('MOTION DENIED · SWEEP OFF', 'alert', 2500);
+  renderControls();
+});
+
+let lastFrame = performance.now();
+function frame(now) {
+  const dt = Math.min(0.1, (now - lastFrame) / 1000);
+  lastFrame = now;
+  if (S.started) {
+    if (S.sweepMode !== 'sweep') detectStep(now); else S.faces = [];
+    updateTargeting(now);
+    updateSignal(now);
+    updateScan(now);
+    audioTick();
+  }
+  draw(now, dt);
+  renderLive(now);
+  requestAnimationFrame(frame);
+}
+
+renderControls();
+updateStartMsg();
+resize();
+requestAnimationFrame(frame);
+loadVision();
+</script>
+</body>
+</html>
