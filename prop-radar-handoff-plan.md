@@ -112,11 +112,11 @@ Combines how much of the frame the face fills with how close it is to the reticl
 
   | Button | Does |
   |---|---|
-  | D-pad ◀ / ▶ | Move the lock to the nearest person left / right |
+  | D-pad ◀ / ▶ | Select the nearest person left / right (pink); if locked, move the lock (orange) |
   | A | Lock / release |
-  | B | Scan |
-  | X | Forced result GAY ↔ STRAIGHT |
-  | Y | Forced result AUTO |
+  | B | Scan; press again on the result to dismiss it |
+  | X | Forced result GAY → STRAIGHT → RANDOM |
+  | Y | Tracking FACE → BODY → AUTO (face up close, body when no face is found) |
   | R | Forced result TOO FAB |
   | L | Flip camera |
   | D-pad ▲ | Mark / unmark bearing |
@@ -124,8 +124,9 @@ Combines how much of the frame the face fills with how close it is to the reticl
   | Select | Show / hide control panel |
   | Start | Mute |
 
-- **Secret mode dot:** a tiny dot under the badges shows the forced result (pink = GAY, blue = STRAIGHT, faint = AUTO, rainbow = TOO FAB).
+- **Secret mode dot:** a tiny dot under the badges shows the forced result (pink = GAY, blue = STRAIGHT, white = RANDOM, faint = AUTO, rainbow = TOO FAB).
 - **Checking the map:** turn DEBUG on (D-pad ▼ or the on-screen button) and press each button; the INPUT line shows the key code or pad index and the action it triggered, or "(unmapped)". Copy any unmapped code into `CONFIG.keys`.
+- **D-pad in gamepad mode:** the app reads the D-pad from buttons 12–15, the stick axes or the hat axis, whichever the controller sends. If it still shows nothing, check the Zero 2 manual for the D-pad / stick emulation switch.
 - **On-screen buttons stay active** alongside the controller.
 
 ---
