@@ -117,9 +117,9 @@ Combines how much of the frame the face fills with how close it is to the reticl
   | B | Scan; press again on the result to dismiss it |
   | X | Forced result GAY → STRAIGHT → RANDOM → BADDIE ALERT |
   | Y | Tracking FACE → BODY → AUTO (face up close, body when no face is found) |
-  | R | Forced result BADDIE ALERT |
+  | R | Mute |
   | L | Flip camera |
-  | D-pad ▲ | Mark / unmark bearing |
+  | D-pad ▲ | Mark direction + sweep on / press again to clear + sweep off |
   | D-pad ▼ | Debug overlay |
   | Select | Show / hide control panel |
   | Start | Mute |
@@ -133,7 +133,7 @@ Combines how much of the frame the face fills with how close it is to the reticl
 
 ## Phase 3: Gyro sweep
 
-- **Mark:** on lock-on (or with a MARK button), the app saves the direction the phone is facing.
+- **Mark:** D-pad ▲ (or the MARK button) saves the direction the phone is facing and turns the sweep on; press again to clear it and turn the sweep off. Sweep is off by default.
 - **Sweep:** turn away and back. Pings intensify as you swing back toward the marked direction, and a HUD arrow shows which way to turn.
 - **Direction source:** relative turning measured by the gyroscope, which is smoother indoors than the compass. RE-ZERO resets drift.
 - **Modes:** the sweep can run alone, or combine with face detection so the lock resumes when the face reappears in view.

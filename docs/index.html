@@ -283,7 +283,7 @@ const CONFIG = {
     KeyJ: 'scan',                          // B        scan
     KeyH: 'gayStraight',                   // X        forced result GAY → STRAIGHT → RANDOM → BADDIE
     KeyI: 'model',                         // Y        tracking FACE / BODY / AUTO
-    KeyM: 'fab',                           // R        forced result BADDIE ALERT
+    KeyM: 'mute',                          // R        mute
     KeyK: 'flip',                          // L        flip camera
     KeyN: 'deck',                          // Select   show / hide control panel
     KeyO: 'mute',                          // Start    mute
@@ -293,7 +293,7 @@ const CONFIG = {
   pad: {
     14: 'left', 15: 'right', 12: 'mark', 13: 'debug',
     1: 'lock', 0: 'scan', 3: 'gayStraight', 2: 'model',
-    5: 'fab', 4: 'flip', 8: 'deck', 9: 'mute',
+    5: 'mute', 4: 'flip', 8: 'deck', 9: 'mute',
   },
 };
 
@@ -345,7 +345,7 @@ const S = {
   heading: null,        // degrees, relative (gyro-fused), camera direction
   headingOk: false,
   mark: null,
-  sweepMode: saved.sweepMode || 'combo',   // combo | sweep | off
+  sweepMode: 'off',     // combo | sweep | off; D-pad ▲ (mark) turns it on
   lastInput: '—',
   tempStatus: null,     // {text, cls, until}
   lastErr: '',
@@ -358,7 +358,7 @@ function savePrefs() {
   try {
     localStorage.setItem('propradar.v1', JSON.stringify({
       model: S.model, modelMode: S.modelMode, sound: S.sound, customLabel: S.customLabel, label: S.label,
-      debug: S.debug, sens: S.sens, sweepMode: S.sweepMode,
+      debug: S.debug, sens: S.sens,
     }));
   } catch {}
 }
@@ -761,7 +761,37 @@ function stopScanOsc() {
   }
 }
 
-function endScan() { stopScanOsc(); S.scan = null; }
+function endScan() { stopScanOsc(); stopSiren(); S.scan = null; }
+
+// Baddie Alert: a wailing siren with a fast warble on top, until the card is dismissed
+function startSiren(sc) {
+  if (!AC || S.scan !== sc) return;
+  const t = AC.currentTime;
+  const o = AC.createOscillator(), lp = AC.createBiquadFilter(), g = AC.createGain();
+  o.type = 'sawtooth'; o.frequency.value = 975;
+  lp.type = 'lowpass'; lp.frequency.value = 2400;
+  g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.16, t + 0.3);
+  const wail = AC.createOscillator(), wailAmt = AC.createGain();
+  wail.frequency.value = 0.5; wailAmt.gain.value = 325;          // 650 ↔ 1300 Hz
+  const warble = AC.createOscillator(), warbleAmt = AC.createGain();
+  warble.frequency.value = 7; warbleAmt.gain.value = 40;
+  wail.connect(wailAmt).connect(o.frequency);
+  warble.connect(warbleAmt).connect(o.frequency);
+  o.connect(lp).connect(g).connect(master);
+  [o, wail, warble].forEach((n) => n.start(t));
+  sc.siren = { nodes: [o, wail, warble], gain: g };
+}
+
+function stopSiren() {
+  const sc = S.scan;
+  if (!sc) return;
+  clearTimeout(sc.sirenTimer);
+  if (sc.siren) {
+    sc.siren.gain.gain.setTargetAtTime(0.0001, AC.currentTime, 0.03);
+    sc.siren.nodes.forEach((n) => n.stop(AC.currentTime + 0.2));
+    sc.siren = null;
+  }
+}
 
 function decideResult(sc) {
   if (S.forced === 'rand') return Math.random() < 0.5 ? 'high' : 'low';
@@ -798,6 +828,7 @@ function updateScan(now) {
     sc.revealAt = now;
     showResult(sc.result, sc.final);
     playJingle(sc.result);
+    if (sc.result === 'fab') sc.sirenTimer = setTimeout(() => startSiren(sc), 1300);
   } else {
     const p = clamp((now - sc.revealAt) / 400);
     sc.value = 50 + (sc.final - 50) * p;
@@ -830,7 +861,7 @@ function showResult(r, val) {
   $('resultCap').hidden = r === 'fab';
   if (r === 'fab') $('resultBig').innerHTML = '🔥🚨<span class="grad">Baddie Alert</span>🚨🔥';
   else $('resultBig').textContent = RESULT_NAMES[r];
-  $('resultNum').textContent = r === 'fab' ? 'Hotness Overload · You broke the scale' : Math.round(val) + '%';
+  $('resultNum').textContent = r === 'fab' ? 'Hotness Overload · You broke the scale ;)' : Math.round(val) + '%';
   el.hidden = false;
 }
 function hideResult() { $('result').hidden = true; }
@@ -1103,7 +1134,6 @@ const actions = {
     else if (S.target && !S.targetHeld) {
       S.lock = { box: S.target, lastSeen: performance.now() };
       S.reacquire = false;
-      if (S.heading != null) S.mark = S.heading;     // lock-on also marks the bearing
       flash('TARGET LOCKED', 'locked');
       if (AC) { tone(990, 0, 0.07, 'square', 0.15); tone(1480, 0.08, 0.12, 'square', 0.15); }
     } else { flash('NO TARGET', 'alert'); }
@@ -1129,8 +1159,8 @@ const actions = {
   },
   debug: () => { S.debug = !S.debug; savePrefs(); renderControls(); },
   mark: () => {
-    if (S.mark !== null) { S.mark = null; S.reacquire = false; flash('MARK CLEARED'); }
-    else if (setMark()) flash('BEARING MARKED', 'bearing');
+    if (S.mark !== null) { S.mark = null; S.reacquire = false; S.sweepMode = 'off'; flash('SWEEP OFF'); }
+    else if (setMark()) { S.sweepMode = 'combo'; flash('BEARING MARKED · SWEEP ON', 'bearing'); }
     renderControls();
   },
   rezero: () => { if (S.mark !== null && setMark()) flash('RE-ZEROED', 'bearing'); },
@@ -1209,7 +1239,6 @@ function switchTarget(dir) {
   }
   S.lock = { box: best, lastSeen: performance.now() };
   S.targetHeld = false; S.reacquire = false;
-  if (S.heading != null) S.mark = S.heading;
   flash('TARGET SWITCHED', 'locked');
   if (AC) { tone(990, 0, 0.07, 'square', 0.15); tone(1480, 0.08, 0.12, 'square', 0.15); }
   renderControls();
