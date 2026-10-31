@@ -156,6 +156,16 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--cool); outl
   font-family: var(--display); font-weight: 700; font-size: 26px; letter-spacing: 0.12em; text-transform: uppercase; -webkit-user-select: text; user-select: text;
 }
 .editor-row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.editor-row.three { grid-template-columns: repeat(3, 1fr); }
+
+.gallery-card { width: min(100%, 520px); max-height: calc(100vh - 48px); display: grid; grid-template-rows: auto minmax(0, 1fr) auto; gap: 12px; }
+.gallery-head { font-family: var(--mono); font-size: 12px; letter-spacing: 0.14em; color: var(--dim); }
+.gallery-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; overflow-y: auto; align-content: start; }
+.gallery-grid button { padding: 0; aspect-ratio: 3 / 4; overflow: hidden; cursor: pointer; border: 1px solid var(--key-edge); border-radius: 4px; background: var(--key); }
+.gallery-grid img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.gallery-empty { grid-column: 1 / -1; margin: 0; padding: 24px 0; text-align: center; font-family: var(--mono); font-size: 13px; line-height: 1.5; color: var(--dim); }
+#galleryView { display: grid; grid-template-rows: minmax(0, 1fr) auto; gap: 10px; min-height: 0; }
+#galleryImg { width: 100%; height: 100%; min-height: 0; object-fit: contain; border-radius: 4px; background: #000; }
 
 @media (prefers-reduced-motion: reduce) {
   #result.fab .big .grad, #bar.fab i.on { animation: none; }
@@ -177,6 +187,7 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--cool); outl
         <span class="badge" id="camBadge">FRONT</span>
         <span class="badge" id="modelBadge">FACE</span>
         <span class="badge on" id="muteBadge" hidden>MUTED</span>
+        <span class="badge" id="shotBadge" hidden>📷 0</span>
         <span id="modeDot"></span>
       </div>
     </div>
@@ -214,6 +225,8 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--cool); outl
       <button class="key" id="kZero" type="button">RE-ZERO<small>FIX DRIFT</small></button>
       <button class="key" id="kSweep" type="button">SWEEP<small>COMBO</small></button>
       <button class="key" id="kModel" type="button">MODEL<small>FACE</small></button>
+
+      <button class="key" id="kPhotos" type="button">PHOTOS<small>0</small></button>
     </div>
     <div class="sens">
       <label for="sensSlider" id="sensLabel">MAX SIGNAL AT 45% FRAME</label>
@@ -250,6 +263,25 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--cool); outl
   </form>
 </div>
 
+<div class="overlay" id="gallery" hidden>
+  <div class="gallery-card">
+    <div class="gallery-head" id="galleryTitle">PHOTOS</div>
+    <div class="gallery-grid" id="galleryGrid"></div>
+    <div id="galleryView" hidden>
+      <img id="galleryImg" alt="Captured photo">
+      <div class="editor-row three">
+        <button class="key" type="button" id="gBack">BACK</button>
+        <button class="key on" type="button" id="gSave">SAVE</button>
+        <button class="key warn" type="button" id="gDelete">DELETE</button>
+      </div>
+    </div>
+    <div class="editor-row" id="galleryFoot">
+      <button class="key on" type="button" id="gSaveAll">SAVE ALL</button>
+      <button class="key" type="button" id="gClose">CLOSE</button>
+    </div>
+  </div>
+</div>
+
 <script type="module">
 /* =====================================================================
    CONFIG — the one-line switches live here
@@ -269,6 +301,8 @@ const CONFIG = {
   // tracking AUTO: drop to the body model after this long with no face, back to face once
   // the target's head box fills this fraction of the frame's short side for toFaceMs
   autoModel: { toBodyMs: 1500, toFaceFrac: 0.12, toFaceMs: 1000 },
+  // photo taken automatically this long after the result appears (catches the reaction)
+  capture: { revealDelayMs: 1000, quality: 0.9 },
 
   // ---- 8BitDo Zero 2 button map ----
   // Keyboard mode (most reliable on iPhone Safari), keyed by KeyboardEvent.code.
@@ -283,7 +317,7 @@ const CONFIG = {
     KeyJ: 'scan',                          // B        scan
     KeyH: 'gayStraight',                   // X        forced result GAY → STRAIGHT → RANDOM → BADDIE
     KeyI: 'model',                         // Y        tracking FACE / BODY / AUTO
-    KeyM: 'mute',                          // R        mute
+    KeyM: 'capture',                       // R        take a photo
     KeyK: 'flip',                          // L        flip camera
     KeyN: 'deck',                          // Select   show / hide control panel
     KeyO: 'mute',                          // Start    mute
@@ -293,7 +327,7 @@ const CONFIG = {
   pad: {
     14: 'left', 15: 'right', 12: 'mark', 13: 'debug',
     1: 'lock', 0: 'scan', 3: 'gayStraight', 2: 'model',
-    5: 'mute', 4: 'flip', 8: 'deck', 9: 'mute',
+    5: 'capture', 4: 'flip', 8: 'deck', 9: 'mute',
   },
 };
 
@@ -763,7 +797,7 @@ function stopScanOsc() {
   }
 }
 
-function endScan() { stopScanOsc(); stopSiren(); S.scan = null; }
+function endScan() { stopScanOsc(); stopSiren(); if (S.scan) clearTimeout(S.scan.shotTimer); S.scan = null; }
 
 // Baddie Alert: the airhorn on repeat, with a 1 s gap between plays, until the card is dismissed
 function startSiren(sc) {
@@ -816,6 +850,7 @@ function updateScan(now) {
     sc.result = decideResult(sc);
     sc.final = sc.result === 'low' ? 8 + Math.random() * 22 : sc.result === 'high' ? 64 + Math.random() * 28 : 100;
     sc.revealAt = now;
+    sc.shotTimer = setTimeout(() => { if (S.scan === sc) capturePhoto('reveal'); }, CONFIG.capture.revealDelayMs);
     showResult(sc.result, sc.final);
     playJingle(sc.result);
     if (sc.result === 'fab') sc.sirenTimer = setTimeout(() => startSiren(sc), 1300);
@@ -1060,6 +1095,9 @@ function renderControls() {
   setSmall('kMute', S.muted ? 'ON' : 'OFF');
   $('kMute').classList.toggle('warn', S.muted);
   $('muteBadge').hidden = !S.muted;
+  $('shotBadge').hidden = !shotCount;
+  $('shotBadge').textContent = '📷 ' + shotCount;
+  setSmall('kPhotos', String(shotCount));
   setSmall('kDebug', S.debug ? 'ON' : 'OFF');
   $('kDebug').classList.toggle('on', S.debug);
   $('debug').hidden = !S.debug;
@@ -1140,6 +1178,7 @@ const actions = {
   left: () => switchTarget(-1),
   right: () => switchTarget(1),
   deck: () => { S.deck = !S.deck; renderControls(); },
+  capture: () => capturePhoto('button'),
   sound: () => { S.sound = S.sound === 'geiger' ? 'sonar' : 'geiger'; savePrefs(); renderControls(); },
   mute: () => setMuted(!S.muted),
   label: () => {
@@ -1321,6 +1360,179 @@ function pollPads() {
 window.addEventListener('gamepadconnected', () => flash('CONTROLLER CONNECTED'));
 
 /* =====================================================================
+   PHOTOS — composite the scope view, keep it in IndexedDB, save via the share sheet
+   ===================================================================== */
+let db = null, memShots = [], shotCount = 0;
+
+function openDb() {
+  if (db) return Promise.resolve(db);
+  return new Promise((res, rej) => {
+    const rq = indexedDB.open('propradar', 1);
+    rq.onupgradeneeded = () => rq.result.createObjectStore('shots', { keyPath: 'id' });
+    rq.onsuccess = () => { db = rq.result; db.onversionchange = () => { db.close(); db = null; }; res(db); };
+    rq.onerror = () => rej(rq.error);
+  });
+}
+function shotStore(mode, fn) {
+  return openDb().then((d) => new Promise((res, rej) => {
+    const tx = d.transaction('shots', mode), rq = fn(tx.objectStore('shots'));
+    tx.oncomplete = () => res(rq.result);
+    tx.onerror = () => rej(tx.error);
+  }));
+}
+// private browsing or blocked storage: fall back to keeping this session's photos in memory
+async function saveShot(shot) { try { await shotStore('readwrite', (st) => st.put(shot)); } catch { memShots.push(shot); } }
+async function listShots() {
+  let list = [];
+  try { list = (await shotStore('readonly', (st) => st.getAll())) || []; } catch {}
+  return list.concat(memShots).sort((a, b) => b.id - a.id);
+}
+async function deleteShot(id) {
+  memShots = memShots.filter((m) => m.id !== id);
+  try { await shotStore('readwrite', (st) => st.delete(id)); } catch {}
+}
+async function refreshShotCount() { shotCount = (await listShots()).length; renderControls(); }
+
+// draw DOM text (label, result card) into the photo at its on-screen position
+function relRect(el) {
+  const r = el.getBoundingClientRect(), o = scope.getBoundingClientRect();
+  return { x: r.left - o.left, y: r.top - o.top, w: r.width, h: r.height };
+}
+function drawText(g, el, fill, align = 'center') {
+  if (el.hidden || !el.textContent) return;
+  const cs = getComputedStyle(el), r = relRect(el), fs = parseFloat(cs.fontSize);
+  const lh = parseFloat(cs.lineHeight) || fs * 1.2;
+  g.font = `${cs.fontWeight} ${cs.fontSize} ${cs.fontFamily}`;
+  if ('letterSpacing' in g) g.letterSpacing = cs.letterSpacing === 'normal' ? '0px' : cs.letterSpacing;
+  g.fillStyle = fill || cs.color;
+  g.textAlign = align; g.textBaseline = 'middle';
+  // re-wrap to the element's width so multi-line text matches the screen
+  const lines = [];
+  for (const word of el.textContent.split(' ')) {
+    const last = lines.length ? lines[lines.length - 1] + ' ' + word : word;
+    if (lines.length && (cs.whiteSpace === 'nowrap' || g.measureText(last).width <= r.w + 2)) lines[lines.length - 1] = last;
+    else lines.push(word);
+  }
+  const x = align === 'center' ? r.x + r.w / 2 : r.x;
+  const top = r.y + (r.h - lines.length * lh) / 2;
+  lines.forEach((ln, i) => g.fillText(ln, x, top + lh * (i + 0.5)));
+}
+
+function capturePhoto(reason) {
+  if (!S.started || !cam.videoWidth || !W) return;
+  const c = document.createElement('canvas');
+  c.width = Math.round(W * dpr); c.height = Math.round(H * dpr);
+  const g = c.getContext('2d');
+  g.scale(dpr, dpr);
+  const vw = cam.videoWidth, vh = cam.videoHeight, k = Math.max(W / vw, H / vh);
+  g.save();
+  if (S.facing === 'user') { g.translate(W, 0); g.scale(-1, 1); }
+  g.drawImage(cam, (W - vw * k) / 2, (H - vh * k) / 2, vw * k, vh * k);
+  g.restore();
+  g.drawImage(hud, 0, 0, W, H);
+
+  g.shadowColor = 'rgba(255, 79, 216, 0.55)'; g.shadowBlur = 14;
+  drawText(g, $('labelWord'), C.hot, 'left');
+  g.shadowBlur = 0;
+
+  const card = $('result');
+  if (!card.hidden) {
+    const cs = getComputedStyle(card), r = relRect(card);
+    g.beginPath();
+    if (g.roundRect) g.roundRect(r.x, r.y, r.w, r.h, 6); else g.rect(r.x, r.y, r.w, r.h);
+    g.fillStyle = cs.backgroundColor; g.fill();
+    g.shadowColor = cs.borderTopColor; g.shadowBlur = 24;
+    g.lineWidth = 2; g.strokeStyle = cs.borderTopColor; g.stroke();
+    g.shadowBlur = 0;
+    let bigFill = null;
+    if (card.classList.contains('fab')) {
+      const b = relRect($('resultBig'));
+      bigFill = g.createLinearGradient(b.x, 0, b.x + b.w, 0);
+      ['#ff4f4f', '#ffb547', '#f8f04a', '#59f08a', '#4fc3ff', '#b06bff', '#ff4fd8'].forEach((col, i, a) => bigFill.addColorStop(i / (a.length - 1), col));
+    }
+    drawText(g, $('resultCap'));
+    drawText(g, $('resultBig'), bigFill);
+    drawText(g, $('resultNum'));
+  }
+
+  c.toBlob((blob) => {
+    if (blob) saveShot({ id: Date.now(), reason, blob }).then(refreshShotCount);
+  }, 'image/jpeg', CONFIG.capture.quality);
+  if (AC) { tone(2400, 0, 0.02, 'square', 0.05); tone(1600, 0.03, 0.03, 'square', 0.05); }   // quiet shutter
+}
+
+/* ---------- gallery ---------- */
+let galleryShots = [], galleryUrls = [], viewing = null;
+
+async function openGallery() {
+  closeGallery();
+  galleryShots = await listShots();
+  const grid = $('galleryGrid');
+  $('galleryTitle').textContent = `PHOTOS · ${galleryShots.length}`;
+  if (!galleryShots.length) {
+    const p = document.createElement('p');
+    p.className = 'gallery-empty';
+    p.textContent = 'No photos yet. Press R on the controller, or run a scan.';
+    grid.append(p);
+  }
+  for (const shot of galleryShots) {
+    const url = URL.createObjectURL(shot.blob), b = document.createElement('button'), img = new Image();
+    galleryUrls.push(url);
+    img.src = url; img.alt = '';
+    b.type = 'button'; b.append(img);
+    b.addEventListener('click', () => showShot(shot, url));
+    grid.append(b);
+  }
+  $('gSaveAll').disabled = !galleryShots.length;
+  showShot(null);
+  $('gallery').hidden = false;
+}
+
+function showShot(shot, url) {
+  viewing = shot;
+  $('galleryView').hidden = !shot;
+  $('galleryGrid').hidden = !!shot;
+  $('galleryFoot').hidden = !!shot;
+  if (shot) $('galleryImg').src = url;
+}
+
+function closeGallery() {
+  $('gallery').hidden = true;
+  $('galleryImg').removeAttribute('src');
+  $('galleryGrid').replaceChildren();
+  galleryUrls.forEach((u) => URL.revokeObjectURL(u));
+  galleryUrls = [];
+}
+
+const shotFile = (shot) => new File([shot.blob], `prop-radar-${new Date(shot.id).toISOString().replace(/[:.]/g, '-')}.jpg`, { type: 'image/jpeg' });
+
+// iOS share sheet → "Save Image"; falls back to plain downloads elsewhere
+async function shareShots(list) {
+  const files = list.map(shotFile);
+  if (navigator.canShare && navigator.canShare({ files })) {
+    try { await navigator.share({ files }); } catch {}
+    return;
+  }
+  for (const f of files) {
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(f); a.download = f.name; a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+  }
+}
+
+bind('kPhotos', openGallery);
+bind('gClose', closeGallery);
+bind('gBack', () => showShot(null));
+bind('gSave', () => viewing && shareShots([viewing]));
+bind('gSaveAll', () => shareShots(galleryShots));
+bind('gDelete', async () => {
+  if (!viewing) return;
+  await deleteShot(viewing.id);
+  await refreshShotCount();
+  openGallery();
+});
+
+/* =====================================================================
    START
    ===================================================================== */
 function updateStartMsg() {
@@ -1381,6 +1593,7 @@ function frame(now) {
 renderControls();
 updateStartMsg();
 resize();
+refreshShotCount();
 requestAnimationFrame(frame);
 loadVision();
 </script>
