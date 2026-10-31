@@ -108,13 +108,24 @@ Combines how much of the frame the face fills with how close it is to the reticl
 - **Keyboard mode first:** set the 8BitDo to keyboard mode, which Safari on iPhone handles most reliably.
 - **Gamepad mode as a fallback:** the code also supports gamepad mode, though iOS support for it varies by controller.
 - **Controller test panel:** shows the last key or button received, so you can see what each physical button sends.
-- **Button mapping:** an editable table at the top of the code. Defaults:
-  - A: lock / release
-  - B: scan
-  - L/R: cycle the forced result
-  - Select: change the label
-  - Start: mute
-  - Flip camera: assigned to a spare button if the model has one
+- **Button mapping (8BitDo Zero 2):** editable as `CONFIG.keys` (keyboard mode) and `CONFIG.pad` (gamepad mode) at the top of the script.
+
+  | Button | Does |
+  |---|---|
+  | D-pad ◀ / ▶ | Move the lock to the nearest person left / right |
+  | A | Lock / release |
+  | B | Scan |
+  | X | Forced result GAY ↔ STRAIGHT |
+  | Y | Forced result AUTO |
+  | R | Forced result TOO FAB |
+  | L | Flip camera |
+  | D-pad ▲ | Mark / unmark bearing |
+  | D-pad ▼ | Debug overlay |
+  | Select | Show / hide control panel |
+  | Start | Mute |
+
+- **Secret mode dot:** a tiny dot under the badges shows the forced result (pink = GAY, blue = STRAIGHT, faint = AUTO, rainbow = TOO FAB).
+- **Checking the map:** turn DEBUG on (D-pad ▼ or the on-screen button) and press each button; the INPUT line shows the key code or pad index and the action it triggered, or "(unmapped)". Copy any unmapped code into `CONFIG.keys`.
 - **On-screen buttons stay active** alongside the controller.
 
 ---

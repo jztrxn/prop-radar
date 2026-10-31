@@ -62,6 +62,11 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--cool); outl
 .badges { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; font-family: var(--mono); font-size: 11px; letter-spacing: 0.1em; }
 .badge { padding: 3px 7px; border: 1px solid var(--faint); border-radius: 3px; background: rgba(8, 7, 11, 0.55); color: var(--dim); }
 .badge.on { color: var(--warn); border-color: var(--warn); }
+/* secret forced-result cue: only the operator knows what the colour means */
+#modeDot { width: 7px; height: 7px; margin: 2px 3px 0 0; border-radius: 50%; background: var(--faint); }
+#modeDot.high { background: var(--hot); }
+#modeDot.low { background: var(--cool); }
+#modeDot.fab { animation: rainbow 2s linear infinite; }
 
 #debug {
   position: absolute; top: 92px; left: 14px; margin: 0; padding: 8px 10px; max-width: calc(100% - 28px);
@@ -87,7 +92,7 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--cool); outl
 }
 #result .cap { font-family: var(--mono); font-size: 12px; letter-spacing: 0.2em; color: var(--dim); }
 #result .big { margin-top: 6px; font-weight: 700; font-size: clamp(34px, 11vw, 64px); letter-spacing: 0.06em; line-height: 1.02; text-wrap: balance; }
-#result .num { margin-top: 6px; font-family: var(--mono); font-size: 18px; }
+#result .num { margin-top: 8px; font-family: var(--mono); font-weight: 600; font-size: 20px; letter-spacing: 0.08em; color: var(--dim); }
 #result.low { border-color: var(--cool); box-shadow: 0 0 30px rgba(126, 232, 255, 0.3); }
 #result.low .big { color: var(--cool); }
 #result.high .big { color: var(--hot); }
@@ -168,6 +173,7 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--cool); outl
       <div class="badges">
         <span class="badge" id="camBadge">FRONT</span>
         <span class="badge on" id="muteBadge" hidden>MUTED</span>
+        <span id="modeDot"></span>
       </div>
     </div>
 
@@ -256,6 +262,32 @@ const CONFIG = {
   sensitivity: { user: 0.45, environment: 0.18 },
   // result thresholds for RESULT = AUTO (average signal during the scan)
   autoThresholds: { high: 40, fab: 85 },
+
+  // ---- 8BitDo Zero 2 button map ----
+  // Keyboard mode (most reliable on iPhone Safari), keyed by KeyboardEvent.code.
+  // Letters are the Zero 2's keyboard-mode defaults; arrows are aliases. If a button
+  // does nothing, turn DEBUG on, press it, and copy the code from the INPUT line here.
+  keys: {
+    KeyE: 'left',  ArrowLeft: 'left',      // D-pad ◀  move lock to the person on the left
+    KeyF: 'right', ArrowRight: 'right',    // D-pad ▶  move lock to the person on the right
+    KeyC: 'mark',  ArrowUp: 'mark',        // D-pad ▲  mark / unmark bearing
+    KeyD: 'debug', ArrowDown: 'debug',     // D-pad ▼  debug overlay
+    KeyG: 'lock',                          // A        lock / release
+    KeyJ: 'scan',                          // B        scan
+    KeyH: 'gayStraight',                   // X        forced result GAY ↔ STRAIGHT
+    KeyI: 'auto',                          // Y        forced result AUTO
+    KeyM: 'fab',                           // R        forced result TOO FAB
+    KeyK: 'flip',                          // L        flip camera
+    KeyN: 'deck',                          // Select   show / hide control panel
+    KeyO: 'mute',                          // Start    mute
+  },
+  // Gamepad mode, keyed by W3C standard button index. Indexes are by position, so on
+  // 8BitDo's Nintendo layout 0 = bottom (labelled B), 1 = right (A), 2 = left (Y), 3 = top (X).
+  pad: {
+    14: 'left', 15: 'right', 12: 'mark', 13: 'debug',
+    1: 'lock', 0: 'scan', 3: 'gayStraight', 2: 'auto',
+    5: 'fab', 4: 'flip', 8: 'deck', 9: 'mute',
+  },
 };
 
 const MP_VERSION = '0.10.14';
@@ -690,7 +722,7 @@ function updateSignal(now) {
    SCAN SEQUENCE
    ===================================================================== */
 const RESULTS = ['auto', 'low', 'high', 'fab'];
-const RESULT_NAMES = { auto: 'AUTO', low: 'LOW', high: 'HIGH', fab: 'TOO FAB' };
+const RESULT_NAMES = { auto: 'AUTO', low: 'STRAIGHT', high: 'GAY', fab: 'TOO FAB' };
 const T_CLIMB = 2300, T_STUTTER = 3400, T_PAUSE = 5000, T_SHOW = 6500;
 
 function startScan() {
@@ -782,7 +814,7 @@ function showResult(r, val) {
   const el = $('result');
   el.className = r;
   $('resultCap').textContent = S.label + ' READING';
-  $('resultBig').textContent = r === 'low' ? 'LOW' : r === 'high' ? 'HIGH' : 'TOO FABULOUS TO MEASURE';
+  $('resultBig').textContent = r === 'fab' ? 'TOO FABULOUS TO MEASURE' : RESULT_NAMES[r];
   $('resultNum').textContent = r === 'fab' ? 'METER OVERLOAD · ERR 100+' : Math.round(val) + '%';
   el.hidden = false;
 }
@@ -987,6 +1019,7 @@ function renderControls() {
   setSmall('kLock', S.lock ? 'LOCKED' : S.target ? 'READY' : 'NO TARGET');
   setSmall('kResult', RESULT_NAMES[S.forced]);
   $('kResult').classList.toggle('on', S.forced !== 'auto');
+  $('modeDot').className = S.forced;
   setSmall('kSound', S.sound === 'geiger' ? 'GEIGER' : 'SONAR');
   setSmall('kMute', S.muted ? 'ON' : 'OFF');
   $('kMute').classList.toggle('warn', S.muted);
@@ -1060,6 +1093,12 @@ const actions = {
   },
   scan: () => startScan(),
   result: () => { S.forced = RESULTS[(RESULTS.indexOf(S.forced) + 1) % RESULTS.length]; renderControls(); },
+  gayStraight: () => { setForced(S.forced === 'high' ? 'low' : 'high'); },
+  auto: () => setForced('auto'),
+  fab: () => setForced('fab'),
+  left: () => switchTarget(-1),
+  right: () => switchTarget(1),
+  deck: () => { S.deck = !S.deck; renderControls(); },
   sound: () => { S.sound = S.sound === 'geiger' ? 'sonar' : 'geiger'; savePrefs(); renderControls(); },
   mute: () => setMuted(!S.muted),
   label: () => {
@@ -1090,6 +1129,39 @@ const actions = {
   },
 };
 
+// quiet confirmation only: the mode dot changes and a soft tick plays, no status text
+function setForced(r) {
+  S.forced = r;
+  if (AC) tone(r === 'low' ? 700 : 1500, 0, 0.03, 'sine', 0.06);
+  renderControls();
+}
+
+// move the target/lock to the nearest face on that side of the screen (dir -1 = left, +1 = right)
+function switchTarget(dir) {
+  const cur = S.target;
+  if (!cur) { flash('NO TARGET', 'alert'); return; }
+  const c = toScreen(cur);
+  let best = null, bestScore = Infinity;
+  for (const f of S.faces) {
+    if (f === cur) continue;
+    const s = toScreen(f), dx = (s.cx - c.cx) * dir;
+    if (dx <= 0) continue;
+    const score = dx + 0.5 * Math.abs(s.cy - c.cy);
+    if (score < bestScore) { best = f; bestScore = score; }
+  }
+  if (!best) {
+    flash(`NO TARGET ${dir < 0 ? 'LEFT' : 'RIGHT'}`, 'alert');
+    if (AC) tone(300, 0, 0.08, 'square', 0.08);
+    return;
+  }
+  S.lock = { box: best, lastSeen: performance.now() };
+  S.target = best; S.targetHeld = false; S.reacquire = false;
+  if (S.heading != null) S.mark = S.heading;
+  flash('TARGET SWITCHED', 'locked');
+  if (AC) { tone(990, 0, 0.07, 'square', 0.15); tone(1480, 0.08, 0.12, 'square', 0.15); }
+  renderControls();
+}
+
 const bind = (id, fn) => $(id).addEventListener('click', fn);
 bind('kFlip', actions.flip);
 bind('kLock', actions.lock);
@@ -1103,7 +1175,7 @@ bind('kMark', actions.mark);
 bind('kZero', actions.rezero);
 bind('kSweep', actions.sweep);
 bind('kModel', actions.model);
-bind('deckToggle', () => { S.deck = !S.deck; renderControls(); });
+bind('deckToggle', actions.deck);
 
 $('sensSlider').addEventListener('input', (e) => {
   S.sens[S.facing] = e.target.value / 100;
@@ -1125,11 +1197,32 @@ $('labelForm').addEventListener('submit', (e) => {
   renderControls();
 });
 
-// record raw key input for the debug overlay (controller mapping arrives in phase 3)
+/* ---------- controller: keyboard mode and gamepad mode both dispatch into actions ---------- */
+function runInput(name, desc) {
+  S.lastInput = desc + (name ? ` → ${name}` : ' (unmapped)');
+  if (name && S.started && actions[name]) actions[name]();
+}
+
 window.addEventListener('keydown', (e) => {
   if (e.target === $('labelInput')) return;
-  S.lastInput = `key "${e.key}" (${e.code})`;
+  const name = CONFIG.keys[e.code];
+  if (name) e.preventDefault();
+  if (e.repeat) return;
+  runInput(name, `key "${e.key}" (${e.code})`);
 });
+
+let padPrev = [];
+function pollPads() {
+  const pads = navigator.getGamepads ? navigator.getGamepads() : [];
+  for (const p of pads) {
+    if (!p) continue;
+    const prev = padPrev[p.index] || [];
+    const cur = p.buttons.map((b) => b.pressed);
+    cur.forEach((down, i) => { if (down && !prev[i]) runInput(CONFIG.pad[i], `pad btn ${i}`); });
+    padPrev[p.index] = cur;
+  }
+}
+window.addEventListener('gamepadconnected', () => flash('CONTROLLER CONNECTED'));
 
 /* =====================================================================
    START
@@ -1175,6 +1268,7 @@ let lastFrame = performance.now();
 function frame(now) {
   const dt = Math.min(0.1, (now - lastFrame) / 1000);
   lastFrame = now;
+  pollPads();
   if (S.started) {
     if (S.sweepMode !== 'sweep') detectStep(now); else S.faces = [];
     updateTargeting(now);
