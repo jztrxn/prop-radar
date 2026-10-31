@@ -98,8 +98,10 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--cool); outl
 #result.low .big { color: var(--cool); }
 #result.high .big { color: var(--hot); }
 #result.fab { border-color: #fff; }
-#result.fab .big {
-  font-size: clamp(28px, 8.5vw, 52px);
+#result.fab .big { font-size: clamp(20px, 6.2vw, 44px); white-space: nowrap; letter-spacing: 0.02em; }
+#result.fab .num { font-size: 15px; }
+/* gradient only on the words; background-clip would blank out the emoji */
+#result.fab .big .grad {
   background: linear-gradient(90deg, #ff4f4f, #ffb547, #f8f04a, #59f08a, #4fc3ff, #b06bff, #ff4fd8, #ff4f4f);
   background-size: 200% 100%; -webkit-background-clip: text; background-clip: text; color: transparent;
   animation: slide 1.4s linear infinite;
@@ -156,7 +158,7 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--cool); outl
 .editor-row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 
 @media (prefers-reduced-motion: reduce) {
-  #result.fab .big, #bar.fab i.on { animation: none; }
+  #result.fab .big .grad, #bar.fab i.on { animation: none; }
 }
 </style>
 </head>
@@ -279,9 +281,9 @@ const CONFIG = {
     KeyD: 'debug', ArrowDown: 'debug',     // D-pad ▼  debug overlay
     KeyG: 'lock',                          // A        lock / release
     KeyJ: 'scan',                          // B        scan
-    KeyH: 'gayStraight',                   // X        forced result GAY → STRAIGHT → RANDOM
+    KeyH: 'gayStraight',                   // X        forced result GAY → STRAIGHT → RANDOM → BADDIE
     KeyI: 'model',                         // Y        tracking FACE / BODY / AUTO
-    KeyM: 'fab',                           // R        forced result TOO FAB
+    KeyM: 'fab',                           // R        forced result BADDIE ALERT
     KeyK: 'flip',                          // L        flip camera
     KeyN: 'deck',                          // Select   show / hide control panel
     KeyO: 'mute',                          // Start    mute
@@ -733,7 +735,7 @@ function updateSignal(now) {
    SCAN SEQUENCE
    ===================================================================== */
 const RESULTS = ['auto', 'high', 'low', 'rand', 'fab'];
-const RESULT_NAMES = { auto: 'AUTO', low: 'STRAIGHT', high: 'GAY', rand: 'RANDOM', fab: 'TOO FAB' };
+const RESULT_NAMES = { auto: 'AUTO', low: 'STRAIGHT', high: 'GAY', rand: 'RANDOM', fab: 'BADDIE' };
 const T_CLIMB = 2300, T_STUTTER = 3400, T_PAUSE = 5000;   // the result then stays up until dismissed
 
 function startScan() {
@@ -825,8 +827,10 @@ function showResult(r, val) {
   const el = $('result');
   el.className = r;
   $('resultCap').textContent = S.label + ' READING';
-  $('resultBig').textContent = r === 'fab' ? 'TOO FABULOUS TO MEASURE' : RESULT_NAMES[r];
-  $('resultNum').textContent = r === 'fab' ? 'METER OVERLOAD · ERR 100+' : Math.round(val) + '%';
+  $('resultCap').hidden = r === 'fab';
+  if (r === 'fab') $('resultBig').innerHTML = '🔥🚨<span class="grad">Baddie Alert</span>🚨🔥';
+  else $('resultBig').textContent = RESULT_NAMES[r];
+  $('resultNum').textContent = r === 'fab' ? 'Hotness Overload · You broke the scale' : Math.round(val) + '%';
   el.hidden = false;
 }
 function hideResult() { $('result').hidden = true; }
@@ -1110,7 +1114,7 @@ const actions = {
     else if (S.scan.revealed) { endScan(); hideResult(); }   // mid-scan presses are ignored
   },
   result: () => { S.forced = RESULTS[(RESULTS.indexOf(S.forced) + 1) % RESULTS.length]; renderControls(); },
-  gayStraight: () => setForced({ high: 'low', low: 'rand' }[S.forced] || 'high'),
+  gayStraight: () => setForced({ high: 'low', low: 'rand', rand: 'fab' }[S.forced] || 'high'),
   auto: () => setForced('auto'),
   fab: () => setForced('fab'),
   left: () => switchTarget(-1),
@@ -1174,7 +1178,7 @@ function autoModel(now) {
 // quiet confirmation only: the mode dot changes and a soft tick plays, no status text
 function setForced(r) {
   S.forced = r;
-  if (AC) tone({ low: 700, rand: 1100 }[r] || 1500, 0, 0.03, 'sine', 0.06);
+  if (AC) tone({ low: 700, rand: 1100, fab: 1900 }[r] || 1500, 0, 0.03, 'sine', 0.06);
   renderControls();
 }
 
