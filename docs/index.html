@@ -275,8 +275,9 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--cool); outl
         <button class="key warn" type="button" id="gDelete">DELETE</button>
       </div>
     </div>
-    <div class="editor-row" id="galleryFoot">
+    <div class="editor-row three" id="galleryFoot">
       <button class="key on" type="button" id="gSaveAll">SAVE ALL</button>
+      <button class="key warn" type="button" id="gDeleteAll">DELETE ALL</button>
       <button class="key" type="button" id="gClose">CLOSE</button>
     </div>
   </div>
@@ -1391,6 +1392,10 @@ async function deleteShot(id) {
   memShots = memShots.filter((m) => m.id !== id);
   try { await shotStore('readwrite', (st) => st.delete(id)); } catch {}
 }
+async function deleteAllShots() {
+  memShots = [];
+  try { await shotStore('readwrite', (st) => st.clear()); } catch {}
+}
 async function refreshShotCount() { shotCount = (await listShots()).length; renderControls(); }
 
 // draw DOM text (label, result card) into the photo at its on-screen position
@@ -1483,7 +1488,8 @@ async function openGallery() {
     b.addEventListener('click', () => showShot(shot, url));
     grid.append(b);
   }
-  $('gSaveAll').disabled = !galleryShots.length;
+  $('gSaveAll').disabled = $('gDeleteAll').disabled = !galleryShots.length;
+  disarmDeleteAll();
   showShot(null);
   $('gallery').hidden = false;
 }
@@ -1528,6 +1534,24 @@ bind('gSaveAll', () => shareShots(galleryShots));
 bind('gDelete', async () => {
   if (!viewing) return;
   await deleteShot(viewing.id);
+  await refreshShotCount();
+  openGallery();
+});
+
+// DELETE ALL needs a second tap within 3 s so one stray tap can't wipe everything
+let deleteAllTimer = 0;
+function disarmDeleteAll() {
+  clearTimeout(deleteAllTimer); deleteAllTimer = 0;
+  $('gDeleteAll').textContent = 'DELETE ALL';
+}
+bind('gDeleteAll', async () => {
+  if (!deleteAllTimer) {
+    $('gDeleteAll').textContent = 'TAP AGAIN';
+    deleteAllTimer = setTimeout(disarmDeleteAll, 3000);
+    return;
+  }
+  disarmDeleteAll();
+  await deleteAllShots();
   await refreshShotCount();
   openGallery();
 });

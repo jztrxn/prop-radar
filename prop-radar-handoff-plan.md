@@ -125,7 +125,7 @@ Combines how much of the frame the face fills with how close it is to the reticl
   | Start | Mute |
 
 - **Secret mode dot:** a tiny dot under the badges shows the forced result (pink = GAY, blue = STRAIGHT, white = RANDOM, faint = AUTO, rainbow = BADDIE ALERT).
-- **Photos:** one is taken automatically 1 s after each result appears, and R takes one anytime (camera + HUD + result card; the secret dot and badges are left out). The 📷 badge counts them. Open PHOTOS on the control panel to view, SAVE (share sheet → Save Image), SAVE ALL or DELETE.
+- **Photos:** one is taken automatically 1 s after each result appears, and R takes one anytime (camera + HUD + result card; the secret dot and badges are left out). The 📷 badge counts them. Open PHOTOS on the control panel to view, SAVE (share sheet → Save Image), SAVE ALL, DELETE, or DELETE ALL (tap twice to confirm).
 - **Checking the map:** turn DEBUG on (D-pad ▼ or the on-screen button) and press each button; the INPUT line shows the key code or pad index and the action it triggered, or "(unmapped)". Copy any unmapped code into `CONFIG.keys`.
 - **D-pad in gamepad mode:** the app reads the D-pad from buttons 12–15, the stick axes or the hat axis, whichever the controller sends. If it still shows nothing, check the Zero 2 manual for the D-pad / stick emulation switch.
 - **On-screen buttons stay active** alongside the controller.
